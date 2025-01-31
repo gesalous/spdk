@@ -21,6 +21,10 @@ C_SRCS += rdma_provider_verbs.c
 else ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
 C_SRCS += rdma_provider_mlx5_dv.c
 LOCAL_SYS_LIBS += -lmlx5
+else ifeq ($(CONFIG_RDMA_PROV),portals)
+C_SRCS += rdma_provider_portals.c
+# Add any portals-specific libraries here if needed
+# LOCAL_SYS_LIBS += -lportals4
 else
 $(error Wrong RDMA provider specified: $(CONFIG_RDMA_PROV))
 endif
@@ -43,3 +47,4 @@ endif
 endif
 
 include $(SPDK_ROOT_DIR)/mk/spdk.lib.mk
+
