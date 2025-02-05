@@ -14,15 +14,18 @@ SPDK_MAP_FILE = $(abspath $(CURDIR)/spdk_rdma_provider.map)
 
 LIBNAME = rdma_provider
 
-C_SRCS = common.c
+
 
 ifeq ($(CONFIG_RDMA_PROV),verbs)
+C_SRCS = common.c
 C_SRCS += rdma_provider_verbs.c
 else ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
+C_SRCS = common.c
 C_SRCS += rdma_provider_mlx5_dv.c
 LOCAL_SYS_LIBS += -lmlx5
 else ifeq ($(CONFIG_RDMA_PROV),portals)
-C_SRCS += rdma_provider_portals.c
+C_SRCS = rdma_provider_portals.c
+LOCAL_SYS_LIBS += -lmlx5
 # Add any portals-specific libraries here if needed
 # LOCAL_SYS_LIBS += -lportals4
 else
