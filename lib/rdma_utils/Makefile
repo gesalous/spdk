@@ -13,7 +13,16 @@ SPDK_MAP_FILE = $(abspath $(CURDIR)/spdk_rdma_utils.map)
 
 LIBNAME = rdma_utils
 
+
+# gesalous
+ifeq ($(CONFIG_RDMA_PROV),portals)
+C_SRCS = rdma_utils_portals.c
+else
 C_SRCS = rdma_utils.c
+endif
+
+#original
+#C_SRCS = rdma_utils.c
 
 LOCAL_SYS_LIBS += -libverbs -lrdmacm
 #Attach only if FreeBSD and RDMA is specified with configure
