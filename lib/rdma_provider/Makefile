@@ -19,6 +19,10 @@ WRAPPER_LIBNAME = rdmawrap
 WRAPPER_SRCS = rdma_cm_portals.c
 WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
 
+# Add configurable Portals prefix
+PORTALS_LIB_PREFIX ?= /usr/local
+PORTALS_INCLUDE_PREFIX ?= /usr/local
+
 ifeq ($(CONFIG_RDMA_PROV),verbs)
 C_SRCS = common.c
 C_SRCS += rdma_provider_verbs.c
@@ -30,8 +34,12 @@ else ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_provider_portals.c
 # Build wrapper library for development
 EXTRA_TARGETS = $(WRAPPER_SO)
-# Remove verbs and rdmacm for portals
-LOCAL_SYS_LIBS = -lportals4
+# MODIFIED: Updated Portals library configuration
+LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX)/lib -lportals4
+# NEW: Add include path for headers
+CFLAGS += -I$(PORTALS_INCLUDE_PREFIX)/include
+# NEW: Add rpath for runtime library resolution
+LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)/lib
 else
 $(error Wrong RDMA provider specified: $(CONFIG_RDMA_PROV))
 endif
@@ -56,13 +64,13 @@ LOCAL_SYS_LIBS += -lcxgb4
 endif
 endif
 
-# Wrapper library build rules
 $(WRAPPER_SO): $(WRAPPER_SRCS)
-	$(CC) -shared -o $@ $^ -fPIC -ldl
+	$(CC) -shared -o $@ $^ -fPIC -ldl $(CFLAGS)
 
 .PHONY: wrapper_clean
 wrapper_clean:
 	$(RM) $(WRAPPER_SO)
+
 
 clean: wrapper_clean
 
