@@ -15,9 +15,11 @@
 
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
+//gesalous tmp
 
 #define UNIMPLEMENTED() do { \
-    fprintf(stderr, "UNIMPLEMENTED %s:%s:%d\n", __FILE__, __func__, __LINE__); \
+    fprintf(stderr, "UNIMPLEMENTED X %s:%s:%d\n", __FILE__, __func__, __LINE__); \
+    raise(SIGINT); \
     exit(EXIT_FAILURE); \
 } while(0);
 
