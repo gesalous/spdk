@@ -15,7 +15,7 @@ SPDK_MAP_FILE = $(abspath $(CURDIR)/spdk_rdma_provider.map)
 LIBNAME = rdma_provider
 
 # Wrapper library settings
-WRAPPER_LIBNAME = rdmawrap
+WRAPPER_LIBNAME = rdmacmportals
 WRAPPER_SRCS = rdma_cm_portals.c
 WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
 
@@ -35,7 +35,7 @@ C_SRCS = rdma_provider_portals.c
 # Build wrapper library for development
 EXTRA_TARGETS = $(WRAPPER_SO)
 # MODIFIED: Updated Portals library configuration
-LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX)/lib -lportals4
+LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX)/lib -lportals
 # NEW: Add include path for headers
 CFLAGS += -I$(PORTALS_INCLUDE_PREFIX)/include
 # NEW: Add rpath for runtime library resolution
@@ -65,7 +65,9 @@ endif
 endif
 
 $(WRAPPER_SO): $(WRAPPER_SRCS)
-	$(CC) -shared -o $@ $^ -fPIC -ldl $(CFLAGS)
+	$(CC) -shared -o $@ $^ -fPIC -ldl $(CFLAGS) \
+		-L$(PORTALS_LIB_PREFIX) -lportals \
+		-Wl,-rpath,$(PORTALS_LIB_PREFIX)/lib
 
 .PHONY: wrapper_clean
 wrapper_clean:
