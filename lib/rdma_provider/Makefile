@@ -67,7 +67,7 @@ endif
 $(WRAPPER_SO): $(WRAPPER_SRCS)
 	$(CC) -shared -o $@ $^ -fPIC -ldl $(CFLAGS) \
 		-L$(PORTALS_LIB_PREFIX) -lportals \
-		-Wl,-rpath,$(PORTALS_LIB_PREFIX)/lib
+		-Wl,-rpath,$(PORTALS_LIB_PREFIX)
 
 .PHONY: wrapper_clean
 wrapper_clean:
