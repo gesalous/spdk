@@ -11,6 +11,7 @@
     fprintf(stderr, "PORTALS_WRAP: " fmt "\n", ##__VA_ARGS__);                 \
   } while (0)
 
+
 struct rdma_event_channel *rdma_create_event_channel(void) {
   DEBUG_RDMACM("Intercepted rdma_create_event_channel()");
   struct rdma_event_channel *channel = calloc(1UL, sizeof(*channel));
@@ -27,4 +28,12 @@ struct rdma_event_channel *rdma_create_event_channel(void) {
     return NULL;
   }
   return channel;
+}
+
+struct ibv_context **rdma_get_devices(int *num_devices) {
+  DEBUG_RDMACM("Intercepted rdma_get_devices");
+  DEBUG_RDMACM("Calling PtlInit()");
+  PtlInit();
+  _exit(EXIT_FAILURE);
+  return NULL;
 }
