@@ -163,7 +163,9 @@ endif
 
 ifeq ($(CONFIG_RDMA),y)
 SYS_LIBS += -libverbs -lrdmacm
-endif
+#gesalous
+SYS_LIBS += -L$(PORTALS_LIB_PREFIX) -lportals
+  endif
 
 ifeq ($(CONFIG_URING),y)
 SYS_LIBS += -luring
