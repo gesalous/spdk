@@ -32,14 +32,15 @@ C_SRCS += rdma_provider_mlx5_dv.c
 LOCAL_SYS_LIBS += -lmlx5
 else ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_provider_portals.c
+C_SRCS += ptl_context.c
 # Build wrapper library for development
 EXTRA_TARGETS = $(WRAPPER_SO)
 # MODIFIED: Updated Portals library configuration
-LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX)/lib -lportals
+LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX) -lportals
+# NEW: Add rpath for runtime library resolution
+LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)
 # NEW: Add include path for headers
 CFLAGS += -I$(PORTALS_INCLUDE_PREFIX)/include
-# NEW: Add rpath for runtime library resolution
-LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)/lib
 else
 $(error Wrong RDMA provider specified: $(CONFIG_RDMA_PROV))
 endif

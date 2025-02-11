@@ -15,6 +15,7 @@
 
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
+#include <stdint.h>
 //gesalous tmp
 
 #define UNIMPLEMENTED() do { \
@@ -22,6 +23,28 @@
     raise(SIGINT); \
     exit(EXIT_FAILURE); \
 } while(0);
+
+#define RDMAUTILSPTL_DEBUG(fmt, ...)                                             \
+    do {                                                                      \
+        time_t t = time(NULL);                                                \
+        struct tm *tm = localtime(&t);                                        \
+        char timestamp[32];                                                   \
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
+        fprintf(stderr, "[RDMACMPTL_DEBUG][%s][%s:%s:%d] " fmt "\n",         \
+                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
+    } while (0)
+
+
+#define RDMAUTILSPTL_FATAL(fmt, ...)                                             \
+    do {                                                                      \
+        time_t t = time(NULL);                                                \
+        struct tm *tm = localtime(&t);                                        \
+        char timestamp[32];                                                   \
+        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
+        fprintf(stderr, "[RDMACMPTL_DEBUG][%s][%s:%s:%d] " fmt "\n",         \
+                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
+        _exit(EXIT_FAILURE);    \
+    } while (0)
 
 struct rdma_utils_device {
 	struct ibv_pd			*pd;
@@ -60,6 +83,28 @@ static pthread_mutex_t g_rdma_mr_maps_mutex = PTHREAD_MUTEX_INITIALIZER;
 static TAILQ_HEAD(, rdma_utils_memory_domain) g_memory_domains = TAILQ_HEAD_INITIALIZER(
 			g_memory_domains);
 static pthread_mutex_t g_memory_domains_lock = PTHREAD_MUTEX_INITIALIZER;
+
+
+//gesalous override hooks from spdk_create_mem_map
+
+static struct ibv_pd *spdk_ptl_get_ibv_pd(const struct spdk_nvme_transport_id *trid,
+                                   struct ibv_context *verbs) {
+        RDMAUTILSPTL_DEBUG("hooks return ibv pd...");
+        UNIMPLEMENTED()
+        return NULL;
+}
+
+
+static uint64_t spdk_ptl_get_rkey(struct ibv_pd *pd, void *buf, size_t size) {
+        RDMAUTILSPTL_DEBUG("get_rkey staff from hooks");
+        UNIMPLEMENTED()
+        return UINT64_MAX;
+}
+
+static void spdk_ptl_put_rkey(uint64_t key) {
+        RDMAUTILSPTL_DEBUG("Putting key and staff");
+        UNIMPLEMENTED()
+}
 
 static int
 rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
@@ -137,12 +182,14 @@ struct spdk_rdma_utils_mem_map *
 spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *hooks,
 			       uint32_t access_flags)
 {
-  UNIMPLEMENTED()
-	struct spdk_rdma_utils_mem_map *map;
+  RDMAUTILSPTL_DEBUG("hooks are NULL? %s",hooks ? "NO":"YES");
+
+  struct spdk_rdma_utils_mem_map *map;
 
 	if (pd->context->device->transport_type == IBV_TRANSPORT_IWARP) {
+    RDMAUTILSPTL_FATAL("No IWARP support this is PORTALS");
 		/* IWARP requires REMOTE_WRITE permission for RDMA_READ operation */
-		access_flags |= IBV_ACCESS_REMOTE_WRITE;
+		/*access_flags |= IBV_ACCESS_REMOTE_WRITE;*/
 	}
 
 	pthread_mutex_lock(&g_rdma_mr_maps_mutex);
@@ -165,7 +212,13 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 		SPDK_ERRLOG("Memory allocation failed\n");
 		return NULL;
 	}
-	map->pd = pd;
+  /*gesalous add custom hooks to see what they do*/
+  hooks->get_rkey = spdk_ptl_get_rkey;
+  hooks->put_rkey = spdk_ptl_put_rkey;
+  hooks->get_ibv_pd = spdk_ptl_get_ibv_pd;
+  RDMAUTILSPTL_DEBUG("Added custom hooks for the PORTALS case");
+
+  map->pd = pd;
 	map->ref_count = 1;
 	map->hooks = hooks;
 	map->access_flags = access_flags;
@@ -179,6 +232,7 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 	LIST_INSERT_HEAD(&g_rdma_utils_mr_maps, map, link);
 
 	pthread_mutex_unlock(&g_rdma_mr_maps_mutex);
+  RDMAUTILSPTL_DEBUG("Ok created this mem_map for PORTALS");
 
 	return map;
 }

@@ -1,115 +1,26 @@
+#include "portals_log.h"
+#include "ptl_context.h"
 #include <dlfcn.h>
 #include <infiniband/verbs.h>
+#include <portals4.h>
 #include <rdma/rdma_cma.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/eventfd.h>
 #include <unistd.h>
-#include <portals4.h>
-
-#define SERVER_PID 0
-#define MAGIC_NUMBER 270883UL
-
-#define RDMACMPTL_DEBUG(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[RDMACMPTL_DEBUG][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-    } while (0)
-
-#define RDMACMPTL_INFO(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[RDMACMPTL_INFO][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-    } while (0)
-
-
-#define RDMACMPTL_WARN(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[RDMACMPTL_WARN][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-    } while (0)
-
-
-#define RDMACMPTL_FATAL(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[RDMACMPTL_FATAL][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-        _exit(EXIT_FAILURE);   \
-    } while (0)
-
-
-#define RDMACMPTL_WARN(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[RDMACMPTL_WARN][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-    } while (0)
-
-#define IBVPTL_DEBUG(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[IBVPTL_DEBUG][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-    } while (0)
-
-#define IBVPTL_FATAL(fmt, ...)                                             \
-    do {                                                                      \
-        time_t t = time(NULL);                                                \
-        struct tm *tm = localtime(&t);                                        \
-        char timestamp[32];                                                   \
-        strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "[IBVPTL_FATAL][%s][%s:%s:%d] " fmt "\n",         \
-                timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-        _exit(EXIT_FAILURE); \
-    } while (0)
-
-#define PTL_CONTAINER_OF(ptr, type, member) ({                  \
-    const typeof( ((type *)0)->member ) *__mptr = (ptr);   \
-    (type *)( (char *)__mptr - offsetof(type,member) );})
-
-
-struct ptl_context{
-  uint64_t magic_number;
-  ptl_handle_ni_t ni_handle;
-  struct ibv_context fake_ibv_cnxt;
-  struct ibv_pd pd;
-};
-
 
 struct rdma_event_channel *rdma_create_event_channel(void) {
-  RDMACMPTL_DEBUG("Intercepted rdma_create_event_channel()");
+  SPDK_PTL_DEBUG("RDMACM: Intercepted rdma_create_event_channel()");
   struct rdma_event_channel *channel = calloc(1UL, sizeof(*channel));
   if (!channel) {
-    RDMACMPTL_DEBUG("Allocation of memory failed");
+    SPDK_PTL_DEBUG("RDMACM: Allocation of memory failed");
     return NULL;
   }
 
   channel->fd = eventfd(0, EFD_NONBLOCK);
   if (channel->fd < 0) {
     free(channel);
-    RDMACMPTL_DEBUG("eventfd failed. Reason follows:");
+    SPDK_PTL_DEBUG("RDMACM: eventfd failed. Reason follows:");
     perror("Reason:");
     return NULL;
   }
@@ -121,62 +32,38 @@ struct ibv_context **rdma_get_devices(int *num_devices) {
   struct ptl_context *cnxt;
   int ret;
 
-  RDMACMPTL_DEBUG("Intercepted rdma_get_devices");
-  RDMACMPTL_DEBUG("Calling PtlInit()");
-
-  cnxt = calloc(1UL, sizeof(*cnxt));
-  if(NULL == cnxt){
-    RDMACMPTL_FATAL("Memory allocation failed for portals context?");
-  }
-  cnxt->magic_number = MAGIC_NUMBER;
-  ret = PtlInit();
-	if (ret != PTL_OK) {
-		RDMACMPTL_FATAL("PtlInit failed");
-		_exit(EXIT_FAILURE);
-	}
-
-	const char *srv_nid = getenv("SERVER_NID");
-	if (srv_nid) {
-		ret = PtlNIInit((int)atoi(srv_nid), PTL_NI_MATCHING | PTL_NI_PHYSICAL, SERVER_PID, NULL, NULL,
-				&cnxt->ni_handle);
-	} else {
-		RDMACMPTL_WARN("SERVER_NID not set. Using default nid PTL_IFACE_DEFAULT=0!");
-		ret = PtlNIInit(PTL_IFACE_DEFAULT, PTL_NI_MATCHING | PTL_NI_PHYSICAL, SERVER_PID, NULL, NULL,
-				&cnxt->ni_handle);
-	}
-
-	if (ret != PTL_OK) {
-		RDMACMPTL_FATAL("PtlNIInit failed");
-	}
+  SPDK_PTL_DEBUG("RDMACM: Intercepted rdma_get_devices");
+  SPDK_PTL_DEBUG("RDMACM: Calling PtlInit()");
+  cnxt = ptl_cnxt_create();
 
   devices = calloc(1UL, sizeof(struct ibv_context *));
   if(NULL == devices){
-    RDMACMPTL_FATAL("Failed to allocate memory for device list");
+    SPDK_PTL_FATAL("RDMACM: Failed to allocate memory for device list");
   }
 
-  devices[0] = &cnxt->fake_ibv_cnxt;
-  cnxt->fake_ibv_cnxt.async_fd = eventfd(0, EFD_NONBLOCK);
-  if (cnxt->fake_ibv_cnxt.async_fd < 0) {
-    RDMACMPTL_FATAL("Failed to create async fd");
+  devices[0] = ptl_get_ibv_context(cnxt);
+  devices[0]->async_fd = eventfd(0, EFD_NONBLOCK);
+  if (devices[0]->async_fd < 0) {
+    SPDK_PTL_FATAL("RDMACM: Failed to create async fd");
   }
-  RDMACMPTL_DEBUG("Created this async_fd thing");
-  cnxt->fake_ibv_cnxt.device = calloc(1UL,sizeof(struct ibv_device));
-  if(NULL == cnxt->fake_ibv_cnxt.device){
-    RDMACMPTL_FATAL("No memory");
+  SPDK_PTL_DEBUG("RDMACM: Created this async_fd thing");
+  devices[0]->device = calloc(1UL,sizeof(struct ibv_device));
+  if(NULL == devices[0]->device){
+    SPDK_PTL_FATAL("RDMACM: No memory");
   }
   // Set device name and other attributes
-  strcpy(cnxt->fake_ibv_cnxt.device->name, "portals_device");
-  strcpy(cnxt->fake_ibv_cnxt.device->dev_name, "bxi0");
-  strcpy(cnxt->fake_ibv_cnxt.device->dev_path, "/dev/portals0");
+  strcpy(devices[0]->device->name, "portals_device");
+  strcpy(devices[0]->device->dev_name, "bxi0");
+  strcpy(devices[0]->device->dev_path, "/dev/portals0");
 
-  RDMACMPTL_DEBUG("Initialization DONE with portals Initialization, encapsulated portals_context inside ibv_context");
+  SPDK_PTL_DEBUG("RDMACM: Initialization DONE with portals Initialization, encapsulated portals_context inside ibv_context");
   return devices;
 }
 
 /* Subset of libverbs that Nida implements so nvmf target can boot*/
 int ibv_query_device(struct ibv_context *context,
                      struct ibv_device_attr *device_attr) {
-  IBVPTL_DEBUG("Trapped ibv_query_device filling it with reasonable values...");
+  SPDK_PTL_DEBUG("IBVPTL: Trapped ibv_query_device filling it with reasonable values...");
 
   // Zero out the structure first
   memset(device_attr, 0, sizeof(struct ibv_device_attr));
@@ -207,16 +94,14 @@ int ibv_query_device(struct ibv_context *context,
       IBV_DEVICE_AUTO_PATH_MIG |  // Support auto path migration
       IBV_DEVICE_CHANGE_PHY_PORT; // Support changing physical port
 
-  IBVPTL_DEBUG("Trapped ibv_query_device filling it with reasonable values...DONE");
+  SPDK_PTL_DEBUG("IBVPTL: Trapped ibv_query_device filling it with reasonable values...DONE");
   return 0;
 }
 
 struct ibv_pd *ibv_alloc_pd(struct ibv_context *context) {
-  struct ptl_context *cnxt =
-      PTL_CONTAINER_OF(context, struct ptl_context, fake_ibv_cnxt);
-  if (MAGIC_NUMBER != cnxt->magic_number) {
-    IBVPTL_FATAL("Checked failed not a valid portals context");
-  }
-  IBVPTL_DEBUG("OK trapped ibv_alloc_pd sending dummy pd portals does not need it");
-  return &cnxt->pd;
+  struct ptl_context *cnxt = ptl_get_cnxt_ibcnxt(context);
+  SPDK_PTL_DEBUG("IBVPTL: OK trapped ibv_alloc_pd sending dummy pd portals "
+                 "does not need it");
+  return ptl_get_ibv_pd(cnxt);
 }
+
