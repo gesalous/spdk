@@ -4,17 +4,17 @@
  */
 
 #include "spdk_internal/rdma_utils.h"
-
-#include "spdk/log.h"
-#include "spdk/string.h"
-#include "spdk/likely.h"
-#include "spdk/net.h"
+#include "../rdma_provider/portals_log.h"
+#include "../rdma_provider/ptl_context.h"
 #include "spdk/file.h"
-
+#include "spdk/likely.h"
+#include "spdk/log.h"
+#include "spdk/net.h"
+#include "spdk/string.h"
 #include "spdk_internal/assert.h"
-
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
+#include <stdint.h>
 
 struct rdma_utils_device {
 	struct ibv_pd			*pd;
@@ -54,11 +54,29 @@ static TAILQ_HEAD(, rdma_utils_memory_domain) g_memory_domains = TAILQ_HEAD_INIT
 			g_memory_domains);
 static pthread_mutex_t g_memory_domains_lock = PTHREAD_MUTEX_INITIALIZER;
 
+// gesalous hooks staff start
+static struct ibv_pd *
+spdk_ptl_get_ibv_pd(const struct spdk_nvme_transport_id *trid,
+                    struct ibv_context *verbs) {
+        SPDK_PTL_FATAL("Unimplemented");
+        return NULL;
+}
+
+uint64_t spdk_ptl_get_rkey(struct ibv_pd *pd, void *buf, size_t size) {
+        SPDK_PTL_FATAL("Unimplemented");
+        return UINT64_MAX;
+}
+
+void spdk_ptl_put_rkey(uint64_t key) { SPDK_PTL_FATAL("Unimplemented"); }
+// gesalous hooks staff end
+
+
 static int
 rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		      enum spdk_mem_map_notify_action action,
 		      void *vaddr, size_t size)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct spdk_rdma_utils_mem_map *rmap = cb_ctx;
 	struct ibv_pd *pd = rmap->pd;
 	struct ibv_mr *mr;
@@ -103,6 +121,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 static int
 rdma_check_contiguous_entries(uint64_t addr_1, uint64_t addr_2)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	/* Two contiguous mappings will point to the same address which is the start of the RDMA MR. */
 	return addr_1 == addr_2;
 }
@@ -130,14 +149,16 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 {
 	struct spdk_rdma_utils_mem_map *map;
 
-	if (pd->context->device->transport_type == IBV_TRANSPORT_IWARP) {
-		/* IWARP requires REMOTE_WRITE permission for RDMA_READ operation */
-		access_flags |= IBV_ACCESS_REMOTE_WRITE;
-	}
+  struct ptl_context *portals_context = ptl_get_cnxt_from_ibpd(pd);
+  /* gesalous, no need for any check we are Portals */
+  //  if (pd->context->device->transport_type == IBV_TRANSPORT_IWARP) {
+  // 	/* IWARP requires REMOTE_WRITE permission for RDMA_READ operation */
+  // 	access_flags |= IBV_ACCESS_REMOTE_WRITE;
+  // }
 
-	pthread_mutex_lock(&g_rdma_mr_maps_mutex);
-	/* Look up existing mem map registration for this pd */
-	LIST_FOREACH(map, &g_rdma_utils_mr_maps, link) {
+  pthread_mutex_lock(&g_rdma_mr_maps_mutex);
+  /* Look up existing mem map registration for this pd */
+  LIST_FOREACH(map, &g_rdma_utils_mr_maps, link) {
 		if (map->pd == pd && map->access_flags == access_flags) {
 			map->ref_count++;
 			pthread_mutex_unlock(&g_rdma_mr_maps_mutex);
@@ -155,6 +176,11 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 		SPDK_ERRLOG("Memory allocation failed\n");
 		return NULL;
 	}
+  //gesalous setup custom portals hooks start
+  hooks->get_rkey = spdk_ptl_get_rkey;
+  hooks->get_ibv_pd = spdk_ptl_get_ibv_pd;
+  hooks->put_rkey = spdk_ptl_put_rkey;
+  //gesalous setup custom portals hooks end
 	map->pd = pd;
 	map->ref_count = 1;
 	map->hooks = hooks;
@@ -169,13 +195,15 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 	LIST_INSERT_HEAD(&g_rdma_utils_mr_maps, map, link);
 
 	pthread_mutex_unlock(&g_rdma_mr_maps_mutex);
-
+  SPDK_PTL_DEBUG("Ok done with create mem map staff");
+  
 	return map;
 }
 
 void
 spdk_rdma_utils_free_mem_map(struct spdk_rdma_utils_mem_map **_map)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct spdk_rdma_utils_mem_map *map;
 
 	if (!_map) {
@@ -208,6 +236,7 @@ int
 spdk_rdma_utils_get_translation(struct spdk_rdma_utils_mem_map *map, void *address,
 				size_t length, struct spdk_rdma_utils_memory_translation *translation)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	uint64_t real_length = length;
 
 	assert(map);
@@ -236,6 +265,7 @@ spdk_rdma_utils_get_translation(struct spdk_rdma_utils_mem_map *map, void *addre
 static struct rdma_utils_device *
 rdma_add_dev(struct ibv_context *context)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct rdma_utils_device *dev;
 
 	dev = calloc(1, sizeof(*dev));
@@ -260,6 +290,7 @@ rdma_add_dev(struct ibv_context *context)
 static void
 rdma_remove_dev(struct rdma_utils_device *dev)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	if (!dev->removed || dev->ref > 0) {
 		return;
 	}
@@ -275,6 +306,7 @@ rdma_remove_dev(struct rdma_utils_device *dev)
 static int
 ctx_cmp(const void *_c1, const void *_c2)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct ibv_context *c1 = *(struct ibv_context **)_c1;
 	struct ibv_context *c2 = *(struct ibv_context **)_c2;
 
@@ -284,6 +316,7 @@ ctx_cmp(const void *_c1, const void *_c2)
 static int
 rdma_sync_dev_list(void)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct ibv_context **new_ctx_list;
 	int i, j;
 	int num_devs = 0;
@@ -373,6 +406,7 @@ exit:
 struct ibv_pd *
 spdk_rdma_utils_get_pd(struct ibv_context *context)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct rdma_utils_device *dev;
 	int rc;
 
@@ -404,6 +438,7 @@ spdk_rdma_utils_get_pd(struct ibv_context *context)
 void
 spdk_rdma_utils_put_pd(struct ibv_pd *pd)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct rdma_utils_device *dev, *tmp;
 
 	pthread_mutex_lock(&g_dev_mutex);
@@ -425,6 +460,7 @@ spdk_rdma_utils_put_pd(struct ibv_pd *pd)
 __attribute__((destructor)) static void
 _rdma_utils_fini(void)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct rdma_utils_device *dev, *tmp;
 
 	TAILQ_FOREACH_SAFE(dev, &g_dev_list, tailq, tmp) {
@@ -442,6 +478,7 @@ _rdma_utils_fini(void)
 struct spdk_memory_domain *
 spdk_rdma_utils_get_memory_domain(struct ibv_pd *pd)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct rdma_utils_memory_domain *domain = NULL;
 	struct spdk_memory_domain_ctx ctx = {};
 	int rc;
@@ -490,6 +527,7 @@ spdk_rdma_utils_get_memory_domain(struct ibv_pd *pd)
 int
 spdk_rdma_utils_put_memory_domain(struct spdk_memory_domain *_domain)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct rdma_utils_memory_domain *domain = NULL;
 
 	if (!_domain) {
@@ -526,6 +564,7 @@ spdk_rdma_utils_put_memory_domain(struct spdk_memory_domain *_domain)
 int32_t
 spdk_rdma_cm_id_get_numa_id(struct rdma_cm_id *cm_id)
 {
+  SPDK_PTL_FATAL("Unimplemented");
 	struct sockaddr	*sa;
 	char		addr[64];
 	char		ifc[64];
@@ -551,3 +590,4 @@ spdk_rdma_cm_id_get_numa_id(struct rdma_cm_id *cm_id)
 	}
 	return (int32_t)numa_id;
 }
+
