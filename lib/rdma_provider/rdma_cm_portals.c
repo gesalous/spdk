@@ -41,7 +41,7 @@ struct ibv_context **rdma_get_devices(int *num_devices) {
     SPDK_PTL_FATAL("RDMACM: Failed to allocate memory for device list");
   }
 
-  devices[0] = ptl_get_ibv_context(cnxt);
+  devices[0] = ptl_cnxt_get_ibv_context(cnxt);
   devices[0]->async_fd = eventfd(0, EFD_NONBLOCK);
   if (devices[0]->async_fd < 0) {
     SPDK_PTL_FATAL("RDMACM: Failed to create async fd");
@@ -99,9 +99,9 @@ int ibv_query_device(struct ibv_context *context,
 }
 
 struct ibv_pd *ibv_alloc_pd(struct ibv_context *context) {
-  struct ptl_context *cnxt = ptl_get_cnxt_ibcnxt(context);
+  struct ptl_context *cnxt = ptl_cnxt_get_from_ibcnxt(context);
   SPDK_PTL_DEBUG("IBVPTL: OK trapped ibv_alloc_pd sending dummy pd portals "
                  "does not need it");
-  return ptl_get_ibv_pd(cnxt);
+  return ptl_cnxt_get_ibv_pd(cnxt);
 }
 
