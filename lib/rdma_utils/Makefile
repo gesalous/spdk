@@ -17,6 +17,9 @@ LIBNAME = rdma_utils
 # gesalous
 ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_utils_portals.c
+CFLAGS += -I$(PORTALS_INCLUDE_PREFIX)
+LDFLAGS += -L$(PORTALS_LIB_PREFIX)
+LOCAL_SYS_LIBS += -lportals
 else
 C_SRCS = rdma_utils.c
 endif
