@@ -2,23 +2,33 @@
 #include "portals_log.h"
 #include <infiniband/verbs.h>
 #include <portals4.h>
+#include <stdbool.h>
 #include <stdint.h>
-
 #define PTL_SERVER_PID 0
 #define PTL_MAGIC_NUMBER 27060211UL/*Bdays of my boys :)*/
 #define PTL_EVENT_QUEUE_SIZE 2048
+#define PTL_MD_SIZE 1024
 
 #define SPDK_PTL_CONTAINER_OF(ptr, type, member) ({                  \
     const typeof( ((type *)0)->member ) *__mptr = (ptr);   \
     (type *)( (char *)__mptr - offsetof(type,member) );})
 
+struct ptl_cnxt_mem_handle {
+  void *vaddr;
+  size_t size;
+  ptl_md_t mem_handle;
+  bool inuse;
+};
+
 struct ptl_context{
   uint64_t magic_number;
+  struct ptl_cnxt_mem_handle mem_handles[PTL_MD_SIZE];/*For local accounting only*/
   ptl_handle_ni_t ni_handle;
   ptl_handle_eq_t eq_handle;
   ptl_pt_index_t portals_idx;
   struct ibv_context fake_ibv_cnxt;
-  struct ibv_pd pd;
+  struct ibv_pd pd; 
+  struct spdk_rdma_provider_srq *srq;
 };
 
 struct ptl_context *ptl_cnxt_create(void) {
@@ -99,4 +109,19 @@ ptl_pt_index_t ptl_cnxt_get_portal_index(struct ptl_context *cnxt) {
 
 ptl_handle_ni_t ptl_cnxt_get_ni_handle(struct ptl_context *cnxt) {
   return cnxt->ni_handle;
+}
+
+bool ptl_cnxt_add_md(struct ptl_context *cnxt, void *vaddr, size_t size,
+                     ptl_handle_md_t memory_handle) {
+  bool inserted = false;
+  for (uint32_t i = 0; i < PTL_MD_SIZE; i++) {
+   if (cnxt->mem_handles[i].inuse)
+     continue;
+   inserted = true;
+   cnxt->mem_handles[i].vaddr = vaddr;
+   cnxt->mem_handles[i].size = size;
+   cnxt->mem_handles[i].inuse = true;
+   break;
+  }
+  return inserted;
 }

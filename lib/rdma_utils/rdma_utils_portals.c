@@ -137,6 +137,10 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
           }
           rc = spdk_mem_map_set_translation(map, (uint64_t)vaddr, size,
                                             (uint64_t)md_handle.handle);
+          //keep it also for ptl_context just in case...
+          if (false == ptl_cnxt_add_md(ptl_context, vaddr, size, md_handle)) {
+            SPDK_PTL_FATAL("Failed to keep memory handle in portals context");
+          }
           SPDK_PTL_DEBUG("Registered memory with Portals");
           /*Vanilla staff*/
           // mr = ibv_reg_mr(pd, vaddr, size, access_flags);
@@ -146,7 +150,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
           // }
           // rc = spdk_mem_map_set_translation(map, (uint64_t)vaddr, size,
           //                                   (uint64_t)mr);
-          SPDK_PTL_FATAL("UNIMPLEMENTED");
+          SPDK_PTL_DEBUG("DONE with memory registration in Portals");
           break;
 	case SPDK_MEM_MAP_NOTIFY_UNREGISTER:
     SPDK_PTL_FATAL("UNIMPLEMENTED");
