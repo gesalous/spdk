@@ -105,6 +105,12 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	int rc;
   int ret;
 
+  if (rmap->hooks && (rmap->hooks->put_rkey || rmap->hooks->get_rkey ||
+                      rmap->hooks->get_ibv_pd)) {
+          SPDK_PTL_FATAL(
+              "Sorry custom hooks are not YET supported in SPDK PORTALS.");
+  }
+
   ptl_context = ptl_cnxt_get_from_ibvpd(rmap->pd);
   SPDK_PTL_DEBUG("Ok got portals context!");
   spdk_ptl_print_access_flags(rmap->access_flags);
@@ -112,6 +118,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	switch (action) {
 	case SPDK_MEM_MAP_NOTIFY_REGISTER:
           if (rmap->hooks && rmap->hooks->get_rkey) {
+            /*gesalous, impossible path*/
             rc = spdk_mem_map_set_translation(
                 map, (uint64_t)vaddr, size,
                 rmap->hooks->get_rkey(pd, vaddr, size));
@@ -286,35 +293,42 @@ spdk_rdma_utils_free_mem_map(struct spdk_rdma_utils_mem_map **_map)
 	_rdma_free_mem_map(map);
 }
 
-int
-spdk_rdma_utils_get_translation(struct spdk_rdma_utils_mem_map *map, void *address,
-				size_t length, struct spdk_rdma_utils_memory_translation *translation)
-{
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
-	uint64_t real_length = length;
+int spdk_rdma_utils_get_translation(
+    struct spdk_rdma_utils_mem_map *map, void *address, size_t length,
+    struct spdk_rdma_utils_memory_translation *translation) {
+        uint64_t real_length = length;
 
-	assert(map);
-	assert(address);
-	assert(translation);
+        assert(map);
+        assert(address);
+        assert(translation);
+        if (map->hooks && (map->hooks->get_rkey || map->hooks->put_rkey ||
+                           map->hooks->get_ibv_pd)) {
+                SPDK_PTL_FATAL(
+                    "Sorry SPDK PORTALS does not YET support custom hooks. As "
+                    "a result, it cannot support translations based on key");
+        }
 
-	if (map->hooks && map->hooks->get_rkey) {
-		translation->translation_type = SPDK_RDMA_UTILS_TRANSLATION_KEY;
-		translation->mr_or_key.key = spdk_mem_map_translate(map->map, (uint64_t)address, &real_length);
-	} else {
-		translation->translation_type = SPDK_RDMA_UTILS_TRANSLATION_MR;
-		translation->mr_or_key.mr = (struct ibv_mr *)spdk_mem_map_translate(map->map, (uint64_t)address,
-					    &real_length);
-		if (spdk_unlikely(!translation->mr_or_key.mr)) {
-			SPDK_ERRLOG("No translation for ptr %p, size %zu\n", address, length);
-			return -EINVAL;
-		}
-	}
+        if (map->hooks && map->hooks->get_rkey) {
+                /*gesalous: not possible path*/
+                translation->translation_type = SPDK_RDMA_UTILS_TRANSLATION_KEY;
+                translation->mr_or_key.key = spdk_mem_map_translate(
+                    map->map, (uint64_t)address, &real_length);
+        } else {
+                translation->translation_type = SPDK_RDMA_UTILS_TRANSLATION_MR;
+                translation->mr_or_key.mr =
+                    (struct ibv_mr *)spdk_mem_map_translate(
+                        map->map, (uint64_t)address, &real_length);
+                if (spdk_unlikely(!translation->mr_or_key.mr)) {
+                        SPDK_PTL_FATAL("No translation for ptr %p, size %zu\n",
+                                    address, length);
+                        return -EINVAL;
+                }
+        }
 
-	assert(real_length >= length);
-
-	return 0;
+        assert(real_length >= length);
+        // SPDK_PTL_DEBUG("Ok retrieved also the translation for ptr: %p and size %zu",address,length);
+        return 0;
 }
-
 
 static struct rdma_utils_device *
 rdma_add_dev(struct ibv_context *context)

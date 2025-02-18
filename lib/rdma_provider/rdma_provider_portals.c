@@ -13,11 +13,17 @@
 #include "portals_log.h"
 #include "ptl_context.h"
 #include "spdk/log.h"
+#include "spdk/util.h"
 #include "spdk_internal/rdma_provider.h"
 #include "spdk_internal/rdma_utils.h"
 
 //from common.c staff
 #define SPDK_PTL_PROVIDER_MAGIC_NUMBER 27081983UL
+#define SPDK_PTL_CHECK_SRQ(X) \
+    if ((X)->magic_number != SPDK_PTL_PROVIDER_MAGIC_NUMBER) { \
+        SPDK_PTL_FATAL("Corrupted PORTALS SRQ"); \
+    }
+
 struct spdk_portals_provider_srq{
   uint64_t magic_number;
   struct spdk_rdma_provider_srq fake_srq;
@@ -92,22 +98,126 @@ rdma_queue_recv_wrs(struct spdk_rdma_provider_recv_wr_list *recv_wrs, struct ibv
   return false;
 }
 
-bool
-spdk_rdma_provider_srq_queue_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
-				      struct ibv_recv_wr *first)
-{
-	assert(rdma_srq);
-	assert(first);
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
-  return false;
+bool spdk_rdma_provider_srq_queue_recv_wrs(
+    struct spdk_rdma_provider_srq *rdma_srq, struct ibv_recv_wr *first) {
+  struct ibv_recv_wr *last;
+  struct spdk_rdma_provider_wr_stats *recv_stats;
+  struct spdk_rdma_provider_recv_wr_list *recv_wrs;
+  bool ret;
+
+  assert(rdma_srq->stats);
+  recv_stats = rdma_srq->stats;
+  uint64_t diff = recv_stats->num_submitted_wrs;
+  recv_stats->num_submitted_wrs++;
+  last = first;
+  while (last->next != NULL) {
+                last = last->next;
+                recv_stats->num_submitted_wrs++;
+  }
+
+  recv_wrs = &rdma_srq->recv_wrs;
+
+  if (recv_wrs->first == NULL) {
+                recv_wrs->first = first;
+                recv_wrs->last = last;
+                ret = true;
+  } else {
+                recv_wrs->last->next = first;
+                recv_wrs->last = last;
+                ret = false;
+  }
+  SPDK_PTL_DEBUG("Done exact the same steps as in IBV case total "
+                 "submitted wrs: %lu current: %lu",
+                 recv_stats->num_submitted_wrs,
+                 recv_stats->num_submitted_wrs - diff);
+  return ret;
 }
+
+
+/**
+ * @brief Cleans up the ibv_recv_wr descriptors. In the vanilla implementation hardware handles the cleanup process. However, 
+ * since SPDK_PTL translates the ibv_recv_wr into PTLMEAppend entries, SPDK_PTL needs to do the cleanup.
+ */
+// static bool spdk_ptl_clean_up_recv_wr_desc(struct ibv_recv_wr *recv_wrs) {
+//   return true;
+// }
+
 
 int
 spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 				      struct ibv_recv_wr **bad_wr)
 {
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
-  return -1;
+  //original shit
+  ptl_handle_ni_t nic;
+  ptl_pt_index_t pt_index;
+  ptl_le_t le;
+  ptl_md_t md;
+  ptl_handle_le_t le_handle;
+  int ret;
+
+  if (spdk_unlikely(rdma_srq->recv_wrs.first == NULL)) {
+                return 0;
+  }
+  //Now it's time to append the entries in portals
+  int i = 0;
+  for (struct ibv_recv_wr *wr = rdma_srq->recv_wrs.first; wr != NULL;
+       wr = wr->next) {
+    SPDK_PTL_DEBUG("Ok iterated entry: %d",i++);
+    struct spdk_portals_provider_srq *portals_srq =
+        SPDK_CONTAINEROF(rdma_srq, struct spdk_portals_provider_srq, fake_srq);
+    SPDK_PTL_CHECK_SRQ(portals_srq);
+    nic = ptl_cnxt_get_ni_handle(portals_srq->ptl_context);
+    pt_index = ptl_cnxt_get_portal_index(portals_srq->ptl_context);
+    SPDK_PTL_DEBUG("Num sge is %d",wr->num_sge);
+    for (int i = 0; i < wr->num_sge; i++) {
+      uint64_t memory_address = wr->sg_list[i].addr;  // Memory address of the buffer
+      uint32_t length = wr->sg_list[i].length;        // Length of the buffer
+      uint32_t lkey = wr->sg_list[i].lkey;            // Local key for the memory region
+
+      SPDK_PTL_DEBUG("SGE %d: Address = 0x%lx, Length = %u, LKey = 0x%x\n",
+             i, memory_address, length, lkey);
+        // Initialize the matching entry
+        memset(&le, 0, sizeof(ptl_le_t));
+        
+        // Setup the memory descriptor
+        md.start = (void *)wr->sg_list[i].addr;
+        md.length = wr->sg_list[i].length;
+        md.options = PTL_MD_EVENT_SUCCESS_DISABLE;  // Adjust options as needed
+        md.eq_handle = PTL_EQ_NONE;                // Adjust if you need events
+        
+        // Setup the list entry
+        le.start = md.start;
+        le.length = md.length;
+        le.uid = PTL_UID_ANY;                      // Accept from any user
+        le.options = PTL_LE_OP_PUT;                // Allow PUT operations
+        le.match_id.rank = PTL_RANK_ANY;           // Accept from any rank
+        le.match_bits = 0;                         // Adjust match bits as needed
+        le.ignore_bits = 0;                        // Adjust ignore bits as needed
+        
+        // Place custom context
+        void *user_ptr = (void *)(uintptr_t)wr->wr_id;
+        
+        // Append the memory entry
+        ret = PtlMEAppend(
+            nic,                    // Network interface handle
+            pt_index,               // Portal table index
+            &le,                    // List entry
+            PTL_PRIORITY_LIST,      // List type (PRIORITY or OVERFLOW)
+            user_ptr,               // User pointer (can be used to store wr_id)
+            &le_handle              // Returned handle
+        );
+        if(PTL_OK != ret){
+          SPDK_PTL_FATAL("Failed to append memory entry");
+        }
+
+    }
+  }
+  SPDK_PTL_DEBUG("Ok append the memory entries in Portals");
+  SPDK_PTL_DEBUG("UNIMPLEMENTED do the cleanup? XXX TODO XXX!");
+  // rc = ibv_post_srq_recv(rdma_srq->srq, rdma_srq->recv_wrs.first, bad_wr);
+  rdma_srq->recv_wrs.first = NULL;
+  rdma_srq->stats->doorbell_updates++;
+  return 0;
 }
 
 bool
