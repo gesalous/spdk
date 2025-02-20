@@ -1,3 +1,5 @@
+#include "deque.h"
+#include "lib/rdma_provider/dlist.h"
 #include "portals_log.h"
 #include "ptl_context.h"
 #include "spdk/util.h"
@@ -5,31 +7,80 @@
 #include <infiniband/verbs.h>
 #include <portals4.h>
 #include <rdma/rdma_cma.h>
+#include <semaphore.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/eventfd.h>
+#include <sys/socket.h>
 #include <unistd.h>
-#define SPDK_PTL_EQ_SIZE 16
+#define RDMA_CM_PTL_EQ_SIZE 16
 #define RDMA_CM_PTL_MAGIG_NUMBER 14101983UL
+#define RDMA_CM_PTL_BLOCKING_CHANNEL 0
+
+#define RDMA_CM_LOCK_INIT(x) do { \
+    if (pthread_mutex_init(x,NULL)) { \
+        SPDK_PTL_FATAL("Failed to init mutex"); \
+    } \
+} while(0)
+
+#define RDMA_CM_LOCK(x) do { \
+    if (pthread_mutex_lock(x)) { \
+        SPDK_PTL_FATAL("Failed to lock mutex"); \
+    } \
+} while(0)
+
+#define RDMA_CM_UNLOCK(x) do { \
+    if (pthread_mutex_unlock(x)) { \
+        SPDK_PTL_FATAL("Failed to unlock mutex"); \
+    } \
+} while(0)
+
 
 struct rdma_cm_ptl_id{
   uint64_t magic_number;
+  struct rdma_cm_ptl_event_channel *ptl_channel;
+  struct sockaddr dest_addr;
   struct rdma_cm_id fake_cm_id;
 };
+
+
+struct rdma_cm_ptl_event_channel{
+  uint64_t magic_number;
+  struct dlist *open_fake_connections;
+  struct deque *events_deque;
+  pthread_mutex_t events_deque_lock;
+  struct rdma_event_channel fake_channel;
+#if RDMA_CM_PTL_BLOCKING_CHANNEL
+  sem_t sem;
+#endif
+};
+
 
 
 struct rdma_event_channel *
 rdma_create_event_channel(void) {
   SPDK_PTL_DEBUG("RDMACM: Intercepted rdma_create_event_channel()");
-  struct rdma_event_channel *channel = calloc(1UL, sizeof(*channel));
-  if (!channel) {
+  struct rdma_cm_ptl_event_channel *ptl_channel = calloc(1UL, sizeof(*ptl_channel));
+  if (!ptl_channel) {
     SPDK_PTL_DEBUG("RDMACM: Allocation of memory failed");
     return NULL;
   }
+  ptl_channel->magic_number = RDMA_CM_PTL_MAGIG_NUMBER;
+#if RDMA_CM_PTL_BLOCKING_CHANNEL
+  if (sem_init(&ptl_channel->sem, 0, 0) == -1) {
+    perror("sem init failed reason:");
+    SPDK_PTL_FATAL("sem init failed");
+  }
+#endif
+  ptl_channel->open_fake_connections = dlist_create(NULL, NULL);
+  RDMA_CM_LOCK_INIT(&ptl_channel->events_deque_lock);
+  ptl_channel->events_deque = deque_create(NULL);
+
+  struct rdma_event_channel *channel = &ptl_channel->fake_channel;
 
   channel->fd = eventfd(0, EFD_NONBLOCK);
   if (channel->fd < 0) {
-    free(channel);
+    free(ptl_channel);
     SPDK_PTL_DEBUG("RDMACM: eventfd failed. Reason follows:");
     perror("Reason:");
     return NULL;
@@ -40,7 +91,6 @@ rdma_create_event_channel(void) {
 struct ibv_context **rdma_get_devices(int *num_devices) {
   struct ibv_context **devices;
   struct ptl_context *cnxt;
-  int ret;
 
   SPDK_PTL_DEBUG("RDMACM: Intercepted rdma_get_devices");
   SPDK_PTL_DEBUG("RDMACM: Calling PtlInit()");
@@ -128,7 +178,7 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
   struct ptl_context *ptl_context = ptl_cnxt_get_from_ibcnxt(context);
   SPDK_PTL_DEBUG("IBVPTL: Ok trapped ibv_create_cq time to create the event queue in portals");
 
-  int ret = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_context), SPDK_PTL_EQ_SIZE, &eq_handle);
+  int ret = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_context), RDMA_CM_PTL_EQ_SIZE, &eq_handle);
   if (ret != PTL_OK) {
     SPDK_PTL_FATAL("PtlEQAlloc failed with error code %d", ret);
   }
@@ -148,18 +198,37 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 
 int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
                    void *context, enum rdma_port_space ps) {
-  struct rdma_cm_ptl_id *ptl_id =
-      calloc(1UL, sizeof(struct rdma_cm_ptl_id));
-  struct ptl_context *cnxt = ptl_cnxt_get();
-  ptl_id->fake_cm_id.verbs = ptl_cnxt_get_ibv_context(cnxt);
+  struct rdma_cm_ptl_id *ptl_id;
+  struct ptl_context *ptl_cnxt;
+  struct rdma_cm_ptl_event_channel *ptl_channel;
+  
+  ptl_channel = SPDK_CONTAINEROF(channel, struct rdma_cm_ptl_event_channel, fake_channel);
+  if(ptl_channel->magic_number != RDMA_CM_PTL_MAGIG_NUMBER){
+    SPDK_PTL_FATAL("Corrupted PORTALS channel");
+  }
+
+  ptl_id = calloc(1UL, sizeof(*ptl_id));
+  /*o mpampas sas*/
+  ptl_id->ptl_channel = ptl_channel;
+  ptl_id->fake_cm_id.context = context;
+  ptl_cnxt = ptl_cnxt_get();
+  ptl_id->fake_cm_id.verbs = ptl_cnxt_get_ibv_context(ptl_cnxt);
   ptl_id->magic_number = RDMA_CM_PTL_MAGIG_NUMBER;
   *id = &ptl_id->fake_cm_id;
-  SPDK_PTL_DEBUG("Trapped create cm id FAKED it");
+  dlist_append(ptl_channel->open_fake_connections, ptl_id);
+  SPDK_PTL_DEBUG("Trapped create cm id FAKED it, waking up possible guys for the event");
+#if RDMA_CM_PTL_BLOCKING_CHANNEL
+  if (sem_post(&ptl_channel->sem) == -1) {
+    perror("sem_post failed REASON:");
+    SPDK_PTL_FATAL("Sorry sem_post failed bye!");
+  }
+#endif
   return 0;
 }
 
 int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr) {
-  SPDK_PTL_DEBUG("Trapped rdma_bind_addr FAKED it");
+  SPDK_PTL_FATAL("Trapped rdma_bind_addr FAKED it");
+
   struct rdma_cm_ptl_id * ptl_id = SPDK_CONTAINEROF(id, struct rdma_cm_ptl_id, fake_cm_id);
   if(ptl_id->magic_number != RDMA_CM_PTL_MAGIG_NUMBER){
     SPDK_PTL_FATAL("Corrupted ptl cm id");
@@ -168,7 +237,7 @@ int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr) {
 }
 
 int rdma_listen(struct rdma_cm_id *id, int backlog) {
-  SPDK_PTL_DEBUG("Trapped rdma listen");
+  SPDK_PTL_FATAL("Trapped rdma listen");
   struct rdma_cm_ptl_id * ptl_id = SPDK_CONTAINEROF(id, struct rdma_cm_ptl_id, fake_cm_id);
   if(ptl_id->magic_number != RDMA_CM_PTL_MAGIG_NUMBER){
     SPDK_PTL_FATAL("Corrupted ptl cm id");
@@ -179,5 +248,146 @@ int rdma_listen(struct rdma_cm_id *id, int backlog) {
 
 int rdma_get_cm_event(struct rdma_event_channel *channel,
                       struct rdma_cm_event **event) {
+
+  SPDK_PTL_DEBUG(" --------> Going to take an event...");
+  struct rdma_cm_ptl_event_channel *ptl_channel;
+  struct rdma_cm_event *fake_event;
+
+  ptl_channel = SPDK_CONTAINEROF(channel, struct rdma_cm_ptl_event_channel, fake_channel);
+  if(ptl_channel->magic_number != RDMA_CM_PTL_MAGIG_NUMBER){
+    SPDK_PTL_FATAL("Corrupted PORTALS channel");
+  }
+#if RDMA_CM_PTL_BLOCKING_CHANNEL
+get_event:
+#endif
+  fake_event = NULL;
+  RDMA_CM_LOCK(&ptl_channel->events_deque_lock);
+  fake_event = deque_pop_front(ptl_channel->events_deque);
+  RDMA_CM_UNLOCK(&ptl_channel->events_deque_lock);
+
+  // if(fake_event)
+  //   break;
+  // SPDK_PTL_DEBUG("No event going to sleep...");
+  // sem_wait(&ptl_channel->sem);
+  // SPDK_PTL_DEBUG("Got something woke up");
+  *event = fake_event;
+
+  if(fake_event){
+    SPDK_PTL_DEBUG(" -------> OK got event!");  
+    return 0;
+  }
+#if RDMA_CM_PTL_BLOCKING_CHANNEL
+  sem_wait(&ptl_channel->sem);
+  goto get_event;
+#else
+  SPDK_PTL_DEBUG("Got nothing shit EAGAIN!");
+#endif
+  return EAGAIN;
+}
+
+int rdma_ack_cm_event(struct rdma_cm_event *event) {
+  SPDK_PTL_DEBUG("ACK CM event");
+  free(event);
+  return 0;
+}
+
+// static void rdma_print_addr_info(const char *prefix, struct sockaddr *addr) {
+//     char ip_str[INET6_ADDRSTRLEN] = {0};
+//     uint16_t port = 0;
+
+//     if (!addr) {
+//         SPDK_PTL_INFO("%s: NULL address", prefix);
+//         return;
+//     }
+
+//     switch (addr->sa_family) {
+//         case AF_INET: {
+//             struct sockaddr_in *ipv4 = (struct sockaddr_in *)addr;
+//             inet_ntop(AF_INET, &(ipv4->sin_addr), ip_str, INET6_ADDRSTRLEN);
+//             port = ntohs(ipv4->sin_port);
+//             SPDK_PTL_DEBUG("%s: IPv4 %s:%u", prefix, ip_str, port);
+//             break;
+//         }
+//         case AF_INET6: {
+//             struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *)addr;
+//             inet_ntop(AF_INET6, &(ipv6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
+//             port = ntohs(ipv6->sin6_port);
+//             SPDK_PTL_DEBUG("%s: IPv6 %s:%u", prefix, ip_str, port);
+//             break;
+//         }
+//         default:
+//             SPDK_PTL_DEBUG("%s: Unknown address family %d", prefix, addr->sa_family);
+//     }
+// }
+
+static void rdma_cm_ptl_create_event(struct rdma_cm_ptl_id *ptl_id,
+                                     struct rdma_cm_id *id,
+                                     enum rdma_cm_event_type event_type) {
+
+  struct rdma_cm_event *fake_event;
+  /*Create a fake event*/
+  fake_event = calloc(1UL, sizeof(struct rdma_cm_event));
+  if (!fake_event) {
+    SPDK_PTL_FATAL("No memory!");
+  }
+  fake_event->id = id;
+  assert(id->context);
+  fake_event->status = 0;
+  fake_event->event = event_type;
+  RDMA_CM_LOCK(&ptl_id->ptl_channel->events_deque_lock);
+  if (false ==
+      deque_push_front(ptl_id->ptl_channel->events_deque, fake_event)) {
+    SPDK_PTL_FATAL("Failed to queue fake event");
+  }
+  SPDK_PTL_DEBUG(" ********* Added event of type: %d",event_type);
+  RDMA_CM_UNLOCK(&ptl_id->ptl_channel->events_deque_lock);
+  /*wake up guys waiting*/
+  // if (-1 == sem_post(&ptl_id->ptl_channel->sem)) {
+  //   perror("sem_post failed REASON:");
+  //   SPDK_PTL_FATAL("Sorry sem_post failed bye!");
+  // }
+}
+
+int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
+                      struct sockaddr *dst_addr, int timeout_ms) {
+
+  // rdma_print_addr_info("SOURCE", src_addr);
+  // rdma_print_addr_info("DESTINATION", dst_addr);
+  struct rdma_cm_ptl_id *ptl_id =
+      SPDK_CONTAINEROF(id, struct rdma_cm_ptl_id, fake_cm_id);
+  if (ptl_id->magic_number != RDMA_CM_PTL_MAGIG_NUMBER) {
+    SPDK_PTL_FATAL("Corrupted ptl cm id");
+  }
+  ptl_id->dest_addr = *dst_addr;
+  rdma_cm_ptl_create_event(ptl_id, id, RDMA_CM_EVENT_ADDR_RESOLVED);
+
+  SPDK_PTL_DEBUG("Ok stored dst addr and generated fake RDMA_CM_EVENT_ADDR_RESOLVED event");
+  return 0;
+}
+
+int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms) {
+  SPDK_PTL_DEBUG("RESOLVE ROUTE");
+  // rdma_print_addr_info("SOURCE", src_addr);
+  // rdma_print_addr_info("DESTINATION", dst_addr);
+  struct rdma_cm_ptl_id *ptl_id =
+      SPDK_CONTAINEROF(id, struct rdma_cm_ptl_id, fake_cm_id);
+  if (ptl_id->magic_number != RDMA_CM_PTL_MAGIG_NUMBER) {
+    SPDK_PTL_FATAL("Corrupted ptl cm id");
+  }
+  rdma_cm_ptl_create_event(ptl_id, id, RDMA_CM_EVENT_ROUTE_RESOLVED);
+  return 0;
+}
+
+int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
+                   struct ibv_qp_init_attr *qp_init_attr) {
+  SPDK_PTL_FATAL("UNIMPLEMENTED");
+}
+
+int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param) {
+  SPDK_PTL_FATAL("UNIMPLEMENTED");
+}
+
+int rdma_set_option(struct rdma_cm_id *id, int level, int optname, void *optval,
+                    size_t optlen) {
   SPDK_PTL_FATAL("UNIMPLEMENTED");
 }
