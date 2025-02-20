@@ -133,7 +133,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
           mem_descriptor.start = vaddr;
           mem_descriptor.length = size;
           mem_descriptor.eq_handle = ptl_cnxt_get_event_queue(ptl_context);
-          mem_descriptor.ct_handle = PTL_CT_NONE; 
+          mem_descriptor.ct_handle = PTL_CT_NONE;
           ptl_handle_md_t md_handle;
 
           ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor,
@@ -474,33 +474,15 @@ exit:
 struct ibv_pd *
 spdk_rdma_utils_get_pd(struct ibv_context *context)
 {
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
-	struct rdma_utils_device *dev;
-	int rc;
-
+  SPDK_PTL_DEBUG("Getting PD nothing to do in PORTALS fake it until you make it");
+  struct ptl_context *ptl_context;
+  struct ibv_pd *fake_pd;
 	pthread_mutex_lock(&g_dev_mutex);
-
-	rc = rdma_sync_dev_list();
-	if (rc != 0) {
-		pthread_mutex_unlock(&g_dev_mutex);
-
-		SPDK_ERRLOG("Failed to sync RDMA device list\n");
-		return NULL;
-	}
-
-	TAILQ_FOREACH(dev, &g_dev_list, tailq) {
-		if (dev->context == context && !dev->removed) {
-			dev->ref++;
-			pthread_mutex_unlock(&g_dev_mutex);
-
-			return dev->pd;
-		}
-	}
-
+  ptl_context = ptl_cnxt_get_from_ibcnxt(context);
+  fake_pd = ptl_cnxt_get_ibv_pd(ptl_context);
 	pthread_mutex_unlock(&g_dev_mutex);
 
-	SPDK_ERRLOG("Failed to get PD\n");
-	return NULL;
+	return fake_pd;
 }
 
 void
@@ -546,7 +528,7 @@ _rdma_utils_fini(void)
 struct spdk_memory_domain *
 spdk_rdma_utils_get_memory_domain(struct ibv_pd *pd)
 {
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
+  SPDK_PTL_DEBUG("Doing the same steps as the original");
 	struct rdma_utils_memory_domain *domain = NULL;
 	struct spdk_memory_domain_ctx ctx = {};
 	int rc;

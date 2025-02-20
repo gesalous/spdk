@@ -41,7 +41,10 @@ struct rdma_cm_ptl_id{
   struct rdma_cm_ptl_event_channel *ptl_channel;
   struct sockaddr dest_addr;
   struct rdma_cm_id fake_cm_id;
+  struct ibv_qp fake_qp;
+  struct ibv_qp_init_attr qp_init_attr;
 };
+
 
 
 struct rdma_cm_ptl_event_channel{
@@ -100,7 +103,7 @@ struct ibv_context **rdma_get_devices(int *num_devices) {
   if(NULL == devices){
     SPDK_PTL_FATAL("RDMACM: Failed to allocate memory for device list");
   }
- 
+
   devices[0] = ptl_cnxt_get_ibv_context(cnxt);
   devices[0]->async_fd = eventfd(0, EFD_NONBLOCK);
   if (devices[0]->async_fd < 0) {
@@ -130,7 +133,7 @@ int ibv_query_device(struct ibv_context *context,
   // Zero out the structure first
   memset(device_attr, 0, sizeof(struct ibv_device_attr));
 
-  device_attr->vendor_id = 0x02c9;       //Fake Mellanox id 
+  device_attr->vendor_id = 0x02c9;       //Fake Mellanox id
   device_attr->vendor_part_id = 0x1017;  // Fake Mellanox part id
   device_attr->max_qp = 256;             // Number of QPs you'll support
   device_attr->max_cq = 256;             // Number of CQs
@@ -173,7 +176,7 @@ struct ibv_context *ibv_open_device(struct ibv_device *device) {
 struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
                              void *cq_context, struct ibv_comp_channel *channel,
                              int comp_vector) {
-  
+
   ptl_handle_eq_t eq_handle;
   struct ptl_context *ptl_context = ptl_cnxt_get_from_ibcnxt(context);
   SPDK_PTL_DEBUG("IBVPTL: Ok trapped ibv_create_cq time to create the event queue in portals");
@@ -201,7 +204,7 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
   struct rdma_cm_ptl_id *ptl_id;
   struct ptl_context *ptl_cnxt;
   struct rdma_cm_ptl_event_channel *ptl_channel;
-  
+
   ptl_channel = SPDK_CONTAINEROF(channel, struct rdma_cm_ptl_event_channel, fake_channel);
   if(ptl_channel->magic_number != RDMA_CM_PTL_MAGIG_NUMBER){
     SPDK_PTL_FATAL("Corrupted PORTALS channel");
@@ -214,6 +217,8 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
   ptl_cnxt = ptl_cnxt_get();
   ptl_id->fake_cm_id.verbs = ptl_cnxt_get_ibv_context(ptl_cnxt);
   ptl_id->magic_number = RDMA_CM_PTL_MAGIG_NUMBER;
+  /*Caution wiring need it, it is accessed later*/
+  ptl_id->fake_cm_id.qp = &ptl_id->fake_qp;
   *id = &ptl_id->fake_cm_id;
   dlist_append(ptl_channel->open_fake_connections, ptl_id);
   SPDK_PTL_DEBUG("Trapped create cm id FAKED it, waking up possible guys for the event");
@@ -273,7 +278,7 @@ get_event:
   *event = fake_event;
 
   if(fake_event){
-    SPDK_PTL_DEBUG(" -------> OK got event!");  
+    SPDK_PTL_DEBUG(" -------> OK got event!");
     return 0;
   }
 #if RDMA_CM_PTL_BLOCKING_CHANNEL
@@ -380,7 +385,15 @@ int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms) {
 
 int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
                    struct ibv_qp_init_attr *qp_init_attr) {
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
+  struct rdma_cm_ptl_id *ptl_id =
+      SPDK_CONTAINEROF(id, struct rdma_cm_ptl_id, fake_cm_id);
+  if (ptl_id->magic_number != RDMA_CM_PTL_MAGIG_NUMBER) {
+    SPDK_PTL_FATAL("Corrupted ptl cm id");
+  }
+  ptl_id->qp_init_attr= *qp_init_attr;
+  ptl_id->fake_qp.pd = ptl_cnxt_get_ibv_pd(ptl_cnxt_get());
+  SPDK_PTL_DEBUG("Initialized only the pd of the fake qp");
+  return 0;
 }
 
 int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param) {
@@ -389,5 +402,6 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param) {
 
 int rdma_set_option(struct rdma_cm_id *id, int level, int optname, void *optval,
                     size_t optlen) {
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
+  SPDK_PTL_INFO("Ignoring (for) now options XXX TODO XXX");
+  return 0;
 }
