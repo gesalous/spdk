@@ -18,6 +18,8 @@ LIBNAME = rdma_provider
 WRAPPER_LIBNAME = rdmacmportals
 WRAPPER_SRCS = rdma_cm_portals.c
 WRAPPER_SRCS += ptl_context.c
+WRAPPER_SRCS += dlist.c
+WRAPPER_SRCS += deque.c
 WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
 
 # Add configurable Portals prefix
@@ -34,6 +36,8 @@ LOCAL_SYS_LIBS += -lmlx5
 else ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_provider_portals.c
 C_SRCS += ptl_context.c
+C_SRCS += dlist.c
+C_SRCS += deque.c
 # Build wrapper library for development
 EXTRA_TARGETS = $(WRAPPER_SO)
 # MODIFIED: Updated Portals library configuration
