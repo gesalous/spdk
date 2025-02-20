@@ -303,7 +303,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 bool
 spdk_rdma_provider_accel_sequence_supported(void)
 {
-  SPDK_PTL_FATAL("UNIMPLEMENTED");
+  SPDK_PTL_DEBUG("No accel sequence supported in PORTALS");
 	return false;
 }
 
