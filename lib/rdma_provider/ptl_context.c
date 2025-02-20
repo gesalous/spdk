@@ -28,7 +28,7 @@ struct ptl_context{
   ptl_handle_eq_t eq_handle;
   ptl_pt_index_t portals_idx;
   struct ibv_context fake_ibv_cnxt;
-  struct ibv_pd pd; 
+  struct ibv_pd pd;
   struct ibv_cq fake_cq;
   struct spdk_rdma_provider_srq *srq;
   bool initialized;
@@ -68,7 +68,7 @@ static int ptx_cnxt_poll_cq(struct ibv_cq *cq, int num_entries,
 
 struct ptl_context *ptl_cnxt_get(void) {
   int ret;
-  
+
   if(ptl_context.initialized)
     return &ptl_context;
 
