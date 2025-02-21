@@ -12,23 +12,23 @@ typedef void (*dlist_destructor_fn)(void *data);
 
 // Node structure
 struct dlist_node {
-  void *data;
-  struct dlist_node *prev;
-  struct dlist_node *next;
+	void *data;
+	struct dlist_node *prev;
+	struct dlist_node *next;
 };
 
 struct dlist {
-  struct dlist_node *head;
-  struct dlist_node *tail;
-  size_t size;
-  dlist_compare_fn compare;
-  dlist_destructor_fn destructor;
+	struct dlist_node *head;
+	struct dlist_node *tail;
+	size_t size;
+	dlist_compare_fn compare;
+	dlist_destructor_fn destructor;
 };
 
 // Iterator structure
 struct dlist_iter {
-  struct dlist_node *current;
-  struct dlist *list;
+	struct dlist_node *current;
+	struct dlist *list;
 };
 
 // List operations
