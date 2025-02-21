@@ -7,8 +7,8 @@
 #include <stddef.h>
 
 struct deque {
-  struct dlist *list;
-  pthread_mutex_t lock;
+	struct dlist *list;
+	pthread_mutex_t lock;
 };
 
 // Core deque operations
