@@ -4,14 +4,15 @@
  *   Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
 
-#include <rdma/rdma_cma.h>
 #include "portals4.h"
 #include "spdk/likely.h"
 #include "spdk/stdinc.h"
 #include "spdk/string.h"
+#include <rdma/rdma_cma.h>
 
 #include "portals_log.h"
 #include "ptl_context.h"
+#include "rdma_cm_ptl_id.h"
 #include "spdk/log.h"
 #include "spdk/util.h"
 #include "spdk_internal/rdma_provider.h"
@@ -308,11 +309,14 @@ spdk_rdma_provider_qp_accept(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	return 0;
 }
 
-int
-spdk_rdma_provider_qp_complete_connect(struct spdk_rdma_provider_qp *spdk_rdma_qp)
+int spdk_rdma_provider_qp_complete_connect(
+	struct spdk_rdma_provider_qp *spdk_rdma_qp)
 {
-	/* Nothing to be done for Verbs */
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	/* Nothing to be done for Portals */
+	SPDK_PTL_DEBUG("CREATE FAKE RDMA_CM_EVENT_ESTABLISHED event");
+	rdma_cm_ptl_id_create_event(rdma_cm_ptl_id_get(spdk_rdma_qp->cm_id),
+				    spdk_rdma_qp->cm_id,
+				    RDMA_CM_EVENT_ESTABLISHED);
 	return 0;
 }
 
@@ -328,6 +332,7 @@ int
 spdk_rdma_provider_qp_disconnect(struct spdk_rdma_provider_qp *spdk_rdma_qp)
 {
 	assert(spdk_rdma_qp != NULL);
+
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return 0;
 }
