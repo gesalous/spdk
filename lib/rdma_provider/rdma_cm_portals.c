@@ -196,16 +196,16 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 
 int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr)
 {
-	SPDK_PTL_FATAL("Trapped rdma_bind_addr FAKED it");
+	SPDK_PTL_DEBUG("Trapped rdma_bind_addr FAKED it");
 	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
+
 	return 0;
 }
 
 int rdma_listen(struct rdma_cm_id *id, int backlog)
 {
-	SPDK_PTL_FATAL("Trapped rdma listen");
+	SPDK_PTL_DEBUG("Trapped rdma listen, FAKED IT");
 	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
-	SPDK_PTL_DEBUG("FAKE IT UNTIL YOU MAKE IT");
 	return 0;
 }
 
