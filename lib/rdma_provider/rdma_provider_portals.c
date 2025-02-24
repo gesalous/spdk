@@ -314,7 +314,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			if (PTL_OK != ret) {
 				SPDK_PTL_FATAL("Failed to bind memory descriptor");
 			}
-    	// Setup the list entry
+			// Setup the list entry
 			le.start = md.start;
 			le.length = md.length;
 			le.uid = PTL_UID_ANY;                      // Accept from any user
@@ -392,7 +392,7 @@ spdk_rdma_provider_qp_create(struct rdma_cm_id *cm_id,
 		spdk_rdma_qp->stats = calloc(1UL, sizeof(*spdk_rdma_qp->stats));
 		if (!spdk_rdma_qp->stats) {
 			SPDK_ERRLOG("qp statistics memory allocation failed\n");
-			free(spdk_rdma_qp);
+			free(spdk_portals_qp);
 			return NULL;
 		}
 	}
@@ -458,19 +458,67 @@ bool
 spdk_rdma_provider_qp_queue_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				     struct ibv_send_wr *first)
 {
+  SPDK_PTL_DEBUG("Enqueueing SEND WRS request as in the VANILLA CASE for Portals");
+	struct ibv_send_wr *last;
 
 	assert(spdk_rdma_qp);
 	assert(first);
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return false;
+
+	spdk_rdma_qp->stats->send.num_submitted_wrs++;
+	last = first;
+	while (last->next != NULL) {
+		last = last->next;
+		spdk_rdma_qp->stats->send.num_submitted_wrs++;
+	}
+
+	if (spdk_rdma_qp->send_wrs.first == NULL) {
+		spdk_rdma_qp->send_wrs.first = first;
+		spdk_rdma_qp->send_wrs.last = last;
+		return true;
+	} else {
+		spdk_rdma_qp->send_wrs.last->next = first;
+		spdk_rdma_qp->send_wrs.last = last;
+		return false;
+	}
 }
 
 int
 spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				     struct ibv_send_wr **bad_wr)
 {
+
+	SPDK_PTL_DEBUG("Sending NVME_COMMANDS!");
+	int rc;
+
+	assert(spdk_rdma_qp);
+	assert(bad_wr);
+
+	if (spdk_unlikely(!spdk_rdma_qp->send_wrs.first)) {
+    SPDK_PTL_DEBUG("Nothing to SEND");
+		return 0;
+	}
+	SPDK_PTL_DEBUG("======> INFO about the send list");
+	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
+		SPDK_PTL_DEBUG("====> Work Request ID: %lu", wr->wr_id);
+		SPDK_PTL_DEBUG("====>Number of SGEs in the SEND WR: %d\n", wr->num_sge);
+
+		for (int i = 0; i < wr->num_sge; i++) {
+			SPDK_PTL_DEBUG("=====> SGE[%d]: Address = 0x%lx, Length = %u bytes\n",
+				       i,
+				       wr->sg_list[i].addr,
+				       wr->sg_list[i].length);
+		}
+
+	}
+	SPDK_PTL_DEBUG("======> Done with the send list");
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return 0;
+	rc = ibv_post_send(spdk_rdma_qp->qp, spdk_rdma_qp->send_wrs.first, bad_wr);
+
+	spdk_rdma_qp->send_wrs.first = NULL;
+	spdk_rdma_qp->stats->send.doorbell_updates++;
+
+	return rc;
+
 }
 
 bool
