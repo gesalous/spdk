@@ -47,11 +47,11 @@ static struct ibv_context **g_ctx_list = NULL;
 static TAILQ_HEAD(, rdma_utils_device) g_dev_list = TAILQ_HEAD_INITIALIZER(g_dev_list);
 
 static LIST_HEAD(, spdk_rdma_utils_mem_map) g_rdma_utils_mr_maps = LIST_HEAD_INITIALIZER(
-			&g_rdma_utils_mr_maps);
+		&g_rdma_utils_mr_maps);
 static pthread_mutex_t g_rdma_mr_maps_mutex = PTHREAD_MUTEX_INITIALIZER;
 
 static TAILQ_HEAD(, rdma_utils_memory_domain) g_memory_domains = TAILQ_HEAD_INITIALIZER(
-			g_memory_domains);
+		g_memory_domains);
 static pthread_mutex_t g_memory_domains_lock = PTHREAD_MUTEX_INITIALIZER;
 
 static int
