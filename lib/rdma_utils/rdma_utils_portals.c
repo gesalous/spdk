@@ -2,10 +2,11 @@
  *   Copyright (c) Intel Corporation. All rights reserved.
  *   Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
-
 #include "../rdma_provider/portals_log.h"
+#include "../rdma_provider/ptl_cm_id.h"
 #include "../rdma_provider/ptl_context.h"
-#include "../rdma_provider/rdma_cm_ptl_id.h"
+#include "../rdma_provider/ptl_cq.h"
+#include "lib/rdma_provider/ptl_pd.h"
 #include "spdk/file.h"
 #include "spdk/likely.h"
 #include "spdk/log.h"
@@ -18,7 +19,6 @@
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 #include <stdint.h>
-
 struct rdma_utils_device {
 	struct ibv_pd			*pd;
 	struct ibv_context		*context;
@@ -101,7 +101,10 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		      enum spdk_mem_map_notify_action action,
 		      void *vaddr, size_t size)
 {
-	SPDK_PTL_DEBUG("RDMAUTILSPTL: vaddr is: %p size is: %lu action is: %d", vaddr, size, action);
+	SPDK_PTL_DEBUG("RDMAUTILSPTL: Registering memory vaddr is: %p size is: %lu action is: %d", vaddr,
+		       size, action);
+  struct ptl_pd *ptl_pd;
+  struct ptl_cq *ptl_cq;
 	struct spdk_rdma_utils_mem_map *rmap = cb_ctx;
 	struct ibv_pd *pd = rmap->pd;
 	struct ibv_mr *mr;
@@ -109,6 +112,11 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	uint32_t access_flags;
 	int rc;
 	int ret;
+
+  
+  ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+  ptl_cq = ptl_cq_get_instance(NULL);
+
 
 	if (rmap->hooks && (rmap->hooks->put_rkey || rmap->hooks->get_rkey ||
 			    rmap->hooks->get_ibv_pd)) {
@@ -137,7 +145,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		ptl_md_t mem_descriptor;
 		mem_descriptor.start = vaddr;
 		mem_descriptor.length = size;
-		mem_descriptor.eq_handle = ptl_cnxt_get_event_queue(ptl_context);
+		mem_descriptor.eq_handle = ptl_cq_get_queue(ptl_cq);
 		mem_descriptor.ct_handle = PTL_CT_NONE;
 		ptl_handle_md_t md_handle;
 
@@ -150,7 +158,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		rc = spdk_mem_map_set_translation(map, (uint64_t)vaddr, size,
 						  (uint64_t)md_handle.handle);
 		//keep it also for ptl_context just in case...
-		if (false == ptl_cnxt_add_md(ptl_context, vaddr, size, md_handle)) {
+		if (false == ptl_pd_add_mem_desc(ptl_pd, md_handle, vaddr, size)) {
 			SPDK_PTL_FATAL("Failed to keep memory handle in portals context");
 		}
 		SPDK_PTL_DEBUG("Registered memory with Portals");
@@ -213,6 +221,7 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 	SPDK_PTL_DEBUG("RDMAPTLUTILS: hooks are NULL? %s", hooks ? "NO" : "YES");
 
 	struct spdk_rdma_utils_mem_map *map;
+  struct ptl_pd *ptl_pd;
 
 	/*No IWARP support this is PORTALS*/
 	// if (pd->context->device->transport_type == IBV_TRANSPORT_IWARP) {
@@ -261,8 +270,10 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 	LIST_INSERT_HEAD(&g_rdma_utils_mr_maps, map, link);
 
 	pthread_mutex_unlock(&g_rdma_mr_maps_mutex);
-	SPDK_PTL_DEBUG("Ok created this mem_map for PORTALS");
-
+	SPDK_PTL_DEBUG("Ok created mem_map updated field for PORTALS PD (struct ptl_pd)");
+  /*We want to update our ptl_pd object with which mem_map it relates to*/
+  ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+  ptl_pd_set_mem_map(ptl_pd, map);
 	return map;
 }
 
@@ -480,15 +491,20 @@ exit:
 struct ibv_pd *
 spdk_rdma_utils_get_pd(struct ibv_context *context)
 {
-	SPDK_PTL_DEBUG("Getting PD nothing to do in PORTALS fake it until you make it");
-	struct ptl_context *ptl_context;
-	struct ibv_pd *fake_pd;
-	pthread_mutex_lock(&g_dev_mutex);
-	ptl_context = ptl_cnxt_get_from_ibcnxt(context);
-	fake_pd = ptl_cnxt_get_ibv_pd(ptl_context);
-	pthread_mutex_unlock(&g_dev_mutex);
+  struct ptl_context * ptl_context = ptl_cnxt_get_from_ibcnxt(context);
+  if(NULL == ptl_context->ptl_pd){
+	  SPDK_PTL_DEBUG("PTL PD IS NULLQ creating it");
+    ptl_context->ptl_pd = ptl_pd_create(ptl_context);
+  }
+  return ptl_pd_get_ibv_pd(ptl_context->ptl_pd);
+	// struct ptl_context *ptl_context;
+	// struct ibv_pd *fake_pd;
+	// pthread_mutex_lock(&g_dev_mutex);
+	// ptl_context = ptl_cnxt_get_from_ibcnxt(context);
+	// fake_pd = ptl_pd_get_ibv_pd(ptl_context);
+	// pthread_mutex_unlock(&g_dev_mutex);
 
-	return fake_pd;
+	// return fake_pd;
 }
 
 void
@@ -629,7 +645,7 @@ spdk_rdma_cm_id_get_numa_id(struct rdma_cm_id *cm_id)
 
 	//original
 	// sa = rdma_get_local_addr(cm_id);
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(cm_id);
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(cm_id);
 	sa = rdma_cm_ptl_id_get_src_addr(ptl_id);
 	if (sa == NULL) {
 		return SPDK_ENV_NUMA_ID_ANY;

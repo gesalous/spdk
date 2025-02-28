@@ -20,17 +20,18 @@ struct rdma_cm_ptl_event_channel {
 };
 
 static inline struct rdma_cm_ptl_event_channel *
-rdma_cm_ptl_event_channel_get(struct rdma_event_channel *channel) {
-        struct rdma_cm_ptl_event_channel *ptl_channel = SPDK_CONTAINEROF(
-            channel, struct rdma_cm_ptl_event_channel, fake_channel);
-        if (ptl_channel->magic_number !=
-            RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER) {
-          SPDK_PTL_FATAL(
-              "Corrupted PORTALS channel value is %lu instead of %lu",
-              ptl_channel->magic_number,
-              RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER);
-        }
-        return ptl_channel;
+rdma_cm_ptl_event_channel_get(struct rdma_event_channel *channel)
+{
+	struct rdma_cm_ptl_event_channel *ptl_channel = SPDK_CONTAINEROF(
+			channel, struct rdma_cm_ptl_event_channel, fake_channel);
+	if (ptl_channel->magic_number !=
+	    RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER) {
+		SPDK_PTL_FATAL(
+			"Corrupted PORTALS channel value is %lu instead of %lu",
+			ptl_channel->magic_number,
+			RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER);
+	}
+	return ptl_channel;
 }
 
 static inline void rdma_cm_ptl_event_channel_lock_event_deque(
