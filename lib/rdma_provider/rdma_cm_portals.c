@@ -1,9 +1,12 @@
 #include "deque.h"
 #include "lib/rdma_provider/dlist.h"
+#include "lib/rdma_provider/ptl_cq.h"
 #include "portals_log.h"
+#include "ptl_cm_id.h"
 #include "ptl_context.h"
+#include "ptl_pd.h"
+#include "ptl_qp.h"
 #include "rdma_cm_ptl_event_channel.h"
-#include "rdma_cm_ptl_id.h"
 #include "spdk/util.h"
 #include "spdk_ptl_macros.h"
 #include <dlfcn.h>
@@ -16,9 +19,7 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#define RDMA_CM_PTL_EQ_SIZE 16
 #define RDMA_CM_PTL_BLOCKING_CHANNEL 0
-
 
 struct rdma_event_channel *
 rdma_create_event_channel(void)
@@ -127,10 +128,15 @@ int ibv_query_device(struct ibv_context *context,
 
 struct ibv_pd *ibv_alloc_pd(struct ibv_context *context)
 {
-	struct ptl_context *cnxt = ptl_cnxt_get_from_ibcnxt(context);
-	SPDK_PTL_DEBUG("IBVPTL: OK trapped ibv_alloc_pd sending dummy pd portals "
-		       "does not need it");
-	return ptl_cnxt_get_ibv_pd(cnxt);
+	struct ptl_pd *ptl_pd;
+	struct ptl_context *ptl_context = ptl_cnxt_get_from_ibcnxt(context);
+	SPDK_PTL_DEBUG("IBVPTL: OK trapped ibv_alloc_pd allocating ptl_pd");
+	ptl_pd = ptl_pd_create(ptl_context);
+  if(ptl_context->ptl_pd){
+    SPDK_PTL_FATAL("PTL_PD Already set!");
+  }
+  ptl_context->ptl_pd = ptl_pd;
+	return ptl_pd_get_ibv_pd(ptl_pd);
 }
 
 struct ibv_context *ibv_open_device(struct ibv_device *device)
@@ -143,18 +149,11 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 			     int comp_vector)
 {
 
-	ptl_handle_eq_t eq_handle;
 	struct ptl_context *ptl_context = ptl_cnxt_get_from_ibcnxt(context);
 	SPDK_PTL_DEBUG("IBVPTL: Ok trapped ibv_create_cq time to create the event queue in portals");
-
-	int ret = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_context), RDMA_CM_PTL_EQ_SIZE, &eq_handle);
-	if (ret != PTL_OK) {
-		SPDK_PTL_FATAL("PtlEQAlloc failed with error code %d", ret);
-	}
-	ptl_cnxt_set_eq(ptl_context, eq_handle);
+	struct ptl_cq *ptl_cq = ptl_cq_get_instance(cq_context);
 	SPDK_PTL_DEBUG("Ok set up event queue for PORTALS :-)");
-
-	return ptl_cnxt_get_fake_ibv_cq(ptl_context);
+	return ptl_cq_get_ibv_cq(ptl_cq);
 }
 
 // Caution! Due to inlining of ibv_poll_cq SPDK_PTL overrides it also in
@@ -168,20 +167,17 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 		   void *context, enum rdma_port_space ps)
 {
-	struct rdma_cm_ptl_id *ptl_id;
-	struct ptl_context *ptl_cnxt;
+	struct ptl_cm_id *ptl_id;
 	struct rdma_cm_ptl_event_channel *ptl_channel;
-  ptl_channel = rdma_cm_ptl_event_channel_get(channel);
-	//XXX TODO XXX move this code fragment into rdma_cm_ptl_id.c
-	ptl_id = calloc(1UL, sizeof(*ptl_id));
-	/*o mpampas sas*/
-	ptl_id->ptl_channel = ptl_channel;
-	ptl_id->fake_cm_id.context = context;
-	ptl_cnxt = ptl_cnxt_get();
-	ptl_id->fake_cm_id.verbs = ptl_cnxt_get_ibv_context(ptl_cnxt);
-	ptl_id->magic_number = RDMA_CM_PTL_ID_MAGIG_NUMBER;
+	ptl_channel = rdma_cm_ptl_event_channel_get(channel);
+	ptl_id = ptl_cm_id_create(ptl_channel, context);
 	/*Caution wiring need it, it is accessed later*/
-	ptl_id->fake_cm_id.qp = &ptl_id->fake_qp;
+	// ptl_id->fake_cm_id.qp = &ptl_id->fake_qp;
+	/*
+	 * set PD, CQ, and QP to NULL. These fields are updated through rdma_create_qp!
+	 * Don't worry already done in the constructor of the ptl_cm_id object
+	 * */
+
 	*id = &ptl_id->fake_cm_id;
 	dlist_append(ptl_channel->open_fake_connections, ptl_id);
 	SPDK_PTL_DEBUG("Trapped create cm id FAKED it, waking up possible guys for the event");
@@ -197,7 +193,7 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr)
 {
 	SPDK_PTL_DEBUG("Trapped rdma_bind_addr FAKED it");
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
+	ptl_cm_id_get(id);
 
 	return 0;
 }
@@ -205,7 +201,7 @@ int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr)
 int rdma_listen(struct rdma_cm_id *id, int backlog)
 {
 	SPDK_PTL_DEBUG("Trapped rdma listen, FAKED IT");
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
+	ptl_cm_id_get(id);
 	return 0;
 }
 
@@ -216,7 +212,7 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 	SPDK_PTL_DEBUG(" --------> Going to take an event...");
 	struct rdma_cm_ptl_event_channel *ptl_channel;
 	struct rdma_cm_event *fake_event;
-  ptl_channel = rdma_cm_ptl_event_channel_get(channel);
+	ptl_channel = rdma_cm_ptl_event_channel_get(channel);
 #if RDMA_CM_PTL_BLOCKING_CHANNEL
 get_event:
 #endif
@@ -327,7 +323,7 @@ int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
 		      struct sockaddr *dst_addr, int timeout_ms)
 {
 
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	ptl_id->dest_addr = *dst_addr;
 	struct sockaddr *resolve_src_addr =
 		src_addr ? src_addr : rdma_cm_find_matching_local_ip(dst_addr);
@@ -345,7 +341,7 @@ int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
 
 	SPDK_PTL_DEBUG("----------->   Resolved src addr   <--------------");
 	rdma_cm_print_addr_info("SOURCE_ADDR = ", &ptl_id->src_addr);
-	rdma_cm_ptl_id_create_event(ptl_id, id, RDMA_CM_EVENT_ADDR_RESOLVED);
+	ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_ADDR_RESOLVED);
 	SPDK_PTL_DEBUG("Ok stored dst addr and generated fake "
 		       "RDMA_CM_EVENT_ADDR_RESOLVED event");
 	return 0;
@@ -356,26 +352,37 @@ int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms)
 	SPDK_PTL_DEBUG("RESOLVE ROUTE");
 	// rdma_print_addr_info("SOURCE", src_addr);
 	// rdma_print_addr_info("DESTINATION", dst_addr);
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
-	rdma_cm_ptl_id_create_event(ptl_id, id, RDMA_CM_EVENT_ROUTE_RESOLVED);
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
+	ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_ROUTE_RESOLVED);
 	return 0;
 }
 
 int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 		   struct ibv_qp_init_attr *qp_init_attr)
 {
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
-	ptl_id->qp_init_attr = *qp_init_attr;
-	ptl_id->fake_qp.pd = ptl_cnxt_get_ibv_pd(ptl_cnxt_get());
-	SPDK_PTL_DEBUG("Initialized only the pd of the fake qp");
+	/**
+	 * All the money here. Now everyone (ptl_qp, ptl_cm_id, ptl_pd) should know each other
+	 * */
+	struct ptl_pd *ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
+	struct ptl_cq *send_queue = ptl_cq_get_from_ibv_cq(qp_init_attr->send_cq);
+	struct ptl_cq *recv_queue = ptl_cq_get_from_ibv_cq(qp_init_attr->recv_cq);
+	struct ptl_qp * ptl_qp = ptl_qp_create(ptl_pd, send_queue, recv_queue);
+	/*Update cm_id*/
+	ptl_cm_id_set_ptl_qp(ptl_id, ptl_qp);
+	ptl_cm_id_set_ptl_pd(ptl_id, ptl_pd);
+	ptl_cm_id_set_send_queue(ptl_id, send_queue);
+	ptl_cm_id_set_recv_queue(ptl_id, recv_queue);
+
+	SPDK_PTL_DEBUG("Successfully created Portals Queue Pair Object and updated Portal CM ID and Queue Pair pointers");
 	return 0;
 }
 
 int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 {
-	struct rdma_cm_ptl_id *ptl_id = rdma_cm_ptl_id_get(id);
-  rdma_cm_ptl_id_set_fake_data(ptl_id, conn_param->private_data);
-	rdma_cm_ptl_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE);
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
+	ptl_cm_id_set_fake_data(ptl_id, conn_param->private_data);
+	ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE);
 	SPDK_PTL_DEBUG("FAKED successfull connection");
 	return 0;
 }
