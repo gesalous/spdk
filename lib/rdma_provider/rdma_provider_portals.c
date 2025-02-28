@@ -4,18 +4,17 @@
  *   Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
 #include "portals4.h"
-#include "spdk/likely.h"
-#include "spdk/stdinc.h"
-#include "spdk/string.h"
-#include <rdma/rdma_cma.h>
-
 #include "portals_log.h"
 #include "ptl_context.h"
-#include "rdma_cm_ptl_id.h"
+#include "ptl_cm_id.h"
+#include "spdk/likely.h"
 #include "spdk/log.h"
+#include "spdk/stdinc.h"
+#include "spdk/string.h"
 #include "spdk/util.h"
 #include "spdk_internal/rdma_provider.h"
 #include "spdk_internal/rdma_utils.h"
+#include <rdma/rdma_cma.h>
 
 //from common.c staff
 #define SPDK_PTL_PROVIDER_SRQ_MAGIC_NUMBER 27081983UL
@@ -34,7 +33,7 @@ struct spdk_portals_provider_srq {
 struct spdk_portals_provider_qp {
 	uint64_t magic_number;
 	struct ptl_context *ptl_context;
-	struct rdma_cm_ptl_id *ptl_id;
+	struct ptl_cm_id *ptl_id;
 	struct spdk_rdma_provider_qp fake_spdk_rdma_qp;
 };
 
@@ -379,7 +378,7 @@ spdk_rdma_provider_qp_create(struct rdma_cm_id *cm_id,
 	}
 
 	spdk_portals_qp->ptl_context = ptl_cnxt_get();
-	spdk_portals_qp->ptl_id = rdma_cm_ptl_id_get(cm_id);
+	spdk_portals_qp->ptl_id = ptl_cm_id_get(cm_id);
 	spdk_portals_qp->magic_number =  SPDK_PTL_PROVIDER_QP_MAGIC_NUMBER;
 
 	spdk_rdma_qp = &spdk_portals_qp->fake_spdk_rdma_qp;
@@ -431,9 +430,9 @@ int spdk_rdma_provider_qp_complete_connect(
 {
 	/* Nothing to be done for Portals */
 	SPDK_PTL_DEBUG("CREATE FAKE RDMA_CM_EVENT_ESTABLISHED event");
-	rdma_cm_ptl_id_create_event(rdma_cm_ptl_id_get(spdk_rdma_qp->cm_id),
-				    spdk_rdma_qp->cm_id,
-				    RDMA_CM_EVENT_ESTABLISHED);
+	ptl_cm_id_create_event(ptl_cm_id_get(spdk_rdma_qp->cm_id),
+			       spdk_rdma_qp->cm_id,
+			       RDMA_CM_EVENT_ESTABLISHED);
 	return 0;
 }
 
@@ -458,7 +457,7 @@ bool
 spdk_rdma_provider_qp_queue_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				     struct ibv_send_wr *first)
 {
-  SPDK_PTL_DEBUG("Enqueueing SEND WRS request as in the VANILLA CASE for Portals");
+	SPDK_PTL_DEBUG("Enqueueing SEND WRS request as in the VANILLA CASE for Portals");
 	struct ibv_send_wr *last;
 
 	assert(spdk_rdma_qp);
@@ -490,23 +489,39 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	SPDK_PTL_DEBUG("Sending NVME_COMMANDS!");
 	int rc;
 
+
 	assert(spdk_rdma_qp);
 	assert(bad_wr);
 
 	if (spdk_unlikely(!spdk_rdma_qp->send_wrs.first)) {
-    SPDK_PTL_DEBUG("Nothing to SEND");
+		SPDK_PTL_DEBUG("Nothing to SEND");
 		return 0;
 	}
 	SPDK_PTL_DEBUG("======> INFO about the send list");
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
-		SPDK_PTL_DEBUG("====> Work Request ID: %lu", wr->wr_id);
-		SPDK_PTL_DEBUG("====>Number of SGEs in the SEND WR: %d\n", wr->num_sge);
+		if (wr->num_sge != 1) {
+			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry");
+		}
 
 		for (int i = 0; i < wr->num_sge; i++) {
 			SPDK_PTL_DEBUG("=====> SGE[%d]: Address = 0x%lx, Length = %u bytes\n",
 				       i,
 				       wr->sg_list[i].addr,
 				       wr->sg_list[i].length);
+			// rc = PtlPut(spdk_rdma_qp->md_handle,      // MD handle
+			// 	    wr->sg_list[i].addr,           // local address
+			// 	    wr->sg_list[i].length,         // length
+			// 	    PTL_ACK_REQ,                   // ack request
+			// 	    spdk_rdma_qp->target_id,       // target process
+			// 	    spdk_rdma_qp->pt_index,        // portal table index
+			// 	    spdk_rdma_qp->match_bits,      // match bits
+			// 	    0,                             // remote offset
+			// 	    (void *)wr->wr_id,             // user ptr
+			// 	    0);                            // priority
+
+			// if (rc != PTL_OK) {
+			// 	SPDK_PTL_FATAL("PtlPut failed with rc: %d", rc);
+			// }
 		}
 
 	}

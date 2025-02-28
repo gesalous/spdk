@@ -20,7 +20,10 @@ WRAPPER_SRCS = rdma_cm_portals.c
 WRAPPER_SRCS += ptl_context.c
 WRAPPER_SRCS += dlist.c
 WRAPPER_SRCS += deque.c
-WRAPPER_SRCS += rdma_cm_ptl_id.c
+WRAPPER_SRCS += ptl_cm_id.c
+WRAPPER_SRCS += ptl_cq.c
+WRAPPER_SRCS += ptl_pd.c
+WRAPPER_SRCS += ptl_qp.c
 WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
 
 # Add configurable Portals prefix
@@ -39,7 +42,10 @@ C_SRCS = rdma_provider_portals.c
 C_SRCS += ptl_context.c
 C_SRCS += dlist.c
 C_SRCS += deque.c
-C_SRCS += rdma_cm_ptl_id.c
+C_SRCS += ptl_cm_id.c
+C_SRCS += ptl_cq.c
+C_SRCS += ptl_pd.c
+C_SRCS += ptl_qp.c
 # Build wrapper library for development
 EXTRA_TARGETS = $(WRAPPER_SO)
 # MODIFIED: Updated Portals library configuration
