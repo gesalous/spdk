@@ -18,8 +18,11 @@ LIBNAME = rdma_utils
 ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_utils_portals.c
 CFLAGS += -I$(PORTALS_INCLUDE_PREFIX)
-LDFLAGS += -L$(PORTALS_LIB_PREFIX)
-LOCAL_SYS_LIBS += -lportals
+#gesalous, don't need it everything done in mk/spdk.common.mk
+# LDFLAGS += -L$(PORTALS_LIB_PREFIX)
+# LOCAL_SYS_LIBS += -lportals
+# LDFLAGS += -L$(RDMA_CM_PORTALS_PREFIX)
+# LOCAL_SYS_LIBS += -lrdmacmportals
 else
 C_SRCS = rdma_utils.c
 endif

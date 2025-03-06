@@ -17,10 +17,10 @@ LIBNAME = rdma_provider
 # Wrapper library settings
 WRAPPER_LIBNAME = rdmacmportals
 WRAPPER_SRCS = rdma_cm_portals.c
+WRAPPER_SRCS += ptl_cm_id.c
 WRAPPER_SRCS += ptl_context.c
 WRAPPER_SRCS += dlist.c
 WRAPPER_SRCS += deque.c
-WRAPPER_SRCS += ptl_cm_id.c
 WRAPPER_SRCS += ptl_cq.c
 WRAPPER_SRCS += ptl_pd.c
 WRAPPER_SRCS += ptl_qp.c
@@ -39,21 +39,16 @@ C_SRCS += rdma_provider_mlx5_dv.c
 LOCAL_SYS_LIBS += -lmlx5
 else ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_provider_portals.c
-C_SRCS += ptl_context.c
-C_SRCS += dlist.c
-C_SRCS += deque.c
-C_SRCS += ptl_cm_id.c
-C_SRCS += ptl_cq.c
-C_SRCS += ptl_pd.c
-C_SRCS += ptl_qp.c
 # Build wrapper library for development
 EXTRA_TARGETS = $(WRAPPER_SO)
-# MODIFIED: Updated Portals library configuration
-LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX) -lportals
-# NEW: Add rpath for runtime library resolution
-LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)
-# NEW: Add include path for headers
+# gesalous, not needed everything set in mk/spdk.common.mk
+# LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX) -lportals
+# LOCAL_SYS_LIBS = -L$(RDMA_CM_PORTALS_PREFIX) -lrdmacmportals
+# gesalous, not needed everything set in mk/spdk.common.mk
+# LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)
+# LDFLAGS += -Wl,-rpath,-L$(RDMA_CM_PORTALS_PREFIX) 
 CFLAGS += -I$(PORTALS_INCLUDE_PREFIX)
+
 else
 $(error Wrong RDMA provider specified: $(CONFIG_RDMA_PROV))
 endif
@@ -78,7 +73,7 @@ LOCAL_SYS_LIBS += -lcxgb4
 endif
 endif
 
-$(WRAPPER_SO): $(WRAPPER_SRCS) ptl_context.c
+$(WRAPPER_SO): $(WRAPPER_SRCS)
 	$(CC) -shared -o $@ $^ -fPIC -ldl $(CFLAGS) \
 		-I$(PORTALS_INCLUDE_PREFIX) \
 		-L$(PORTALS_LIB_PREFIX) -lportals \
