@@ -7,6 +7,11 @@
 #  Copyright (c) 2022 Dell Inc, or its subsidiaries.
 #
 
+# Portals configuration
+PORTALS_LIB_PREFIX ?= /home1/private/gesalous/portails4/build/portals
+PORTALS_INCLUDE_PREFIX ?= /home1/private/gesalous/portails4/portals/include
+RDMA_CM_PORTALS_PREFIX ?= /home1/private/gesalous/spdk/lib/rdma_provider/
+
 ifeq ($(wildcard $(SPDK_ROOT_DIR)/mk/config.mk),)
 $(error mk/config.mk: file not found. Please run configure before make)
 endif
@@ -164,8 +169,11 @@ endif
 ifeq ($(CONFIG_RDMA),y)
 SYS_LIBS += -libverbs -lrdmacm
 #gesalous
+LDFLAGS += -Wl,-rpath=$(PORTALS_LIB_PREFIX)
+LDFLAGS += -Wl,-rpath=$(RDMA_CM_PORTALS_PREFIX)
 SYS_LIBS += -L$(PORTALS_LIB_PREFIX) -lportals
-  endif
+SYS_LIBS += -L$(RDMA_CM_PORTALS_PREFIX) -lrdmacmportals
+endif
 
 ifeq ($(CONFIG_URING),y)
 SYS_LIBS += -luring
