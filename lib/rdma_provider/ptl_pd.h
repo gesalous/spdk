@@ -9,11 +9,10 @@
 #include <stdint.h>
 #define PTL_PD_MAX_MEM_DESC 32
 struct spdk_rdma_utils_mem_map;
-
 struct ptl_mem_desc {
-  ptl_handle_md_t mem_desc;
-  void *vaddr;
-  uint32_t size;
+	ptl_handle_md_t mem_handle;
+  ptl_md_t mem_desc;
+  bool is_valid;
 };
 
 struct ptl_pd {
@@ -86,6 +85,7 @@ static inline struct ptl_eq *ptl_pd_get_ptl_cq(struct ptl_pd *ptl_pd)
 	return ptl_pd->ptl_eq;
 }
 
-bool ptl_pd_add_mem_desc(struct ptl_pd *ptl_pd, ptl_handle_md_t mem_desc, void *vaddr, uint32_t size);
+bool ptl_pd_add_mem_desc(struct ptl_pd *ptl_pd, ptl_handle_md_t mem_handle, ptl_md_t mem_desc);
 
+struct ptl_mem_desc ptl_pd_get_mem_desc(struct ptl_pd *ptl_pd, uint64_t base, size_t length);
 #endif

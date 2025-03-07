@@ -5,6 +5,7 @@
 #include "lib/rdma_provider/ptl_pd.h"
 #include "portals_log.h"
 #include "ptl_cm_id.h"
+#include "spdk/util.h"
 #include <stdlib.h>
 
 struct ptl_qp *ptl_qp_create(struct ptl_pd *ptl_pd, struct ptl_cq *send_queue,
@@ -29,3 +30,12 @@ struct ptl_qp *ptl_qp_create(struct ptl_pd *ptl_pd, struct ptl_cq *send_queue,
 	ptl_qp->fake_qp.recv_cq = ptl_cq_get_ibv_cq(receive_queue);
 	return ptl_qp;
 }
+
+struct ptl_qp * ptl_qp_get_from_ibv_qp(struct ibv_qp * ibv_qp){
+  struct ptl_qp *ptl_qp = SPDK_CONTAINEROF(ibv_qp, struct ptl_qp, fake_qp);
+  if(ptl_qp->object_type != PTL_QP){
+    SPDK_PTL_FATAL("FATAL Corrupted");
+  }
+  return ptl_qp;
+}
+

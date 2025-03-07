@@ -1,9 +1,10 @@
 #ifndef PORTALS_LOG_H
 #define PORTALS_LOG_H
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
-#include <signal.h>
 #define SPDK_PTL_DEBUG(fmt, ...)                                             \
     do {                                                                      \
         time_t t = time(NULL);                                                \

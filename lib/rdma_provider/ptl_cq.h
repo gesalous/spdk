@@ -8,7 +8,6 @@
 #include <pthread.h>
 #include <stdint.h>
 #define PTL_CQ_SIZE 4096
-
 struct ptl_context;
 
 struct ptl_cq {
@@ -25,6 +24,9 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context);
 
 static inline ptl_handle_eq_t ptl_cq_get_queue(struct ptl_cq *ptl_cq)
 {
+  if(false == ptl_cq->initialized){
+    SPDK_PTL_FATAL("Uninitialized event queue");
+  }
 	return ptl_cq->eq_handle;
 }
 
