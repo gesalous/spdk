@@ -142,23 +142,26 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		access_flags |= IBV_ACCESS_RELAXED_ORDERING;
 #endif
 		/* Portals staff follows*/
-		ptl_md_t mem_descriptor;
+		ptl_md_t mem_descriptor = {0};
 		mem_descriptor.start = vaddr;
 		mem_descriptor.length = size;
 		mem_descriptor.eq_handle = ptl_cq_get_queue(ptl_cq);
-		mem_descriptor.ct_handle = PTL_CT_NONE;
-		ptl_handle_md_t md_handle;
+    rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor.ct_handle);
+    if (PTL_OK != rc) {
+      SPDK_PTL_FATAL("Failed to allocate a counting event");
+    }
+		ptl_handle_md_t mem_handle;
 
 		ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor,
-				&md_handle);
+				&mem_handle);
 		if (PTL_OK != ret) {
 			SPDK_PTL_FATAL("Failed to register virtual addr %p of size: %lu",
 				       vaddr, size);
 		}
 		rc = spdk_mem_map_set_translation(map, (uint64_t)vaddr, size,
-						  (uint64_t)md_handle.handle);
+						  (uint64_t)mem_handle.handle);
 		//keep it also for ptl_context just in case...
-		if (false == ptl_pd_add_mem_desc(ptl_pd, md_handle, vaddr, size)) {
+		if (false == ptl_pd_add_mem_desc(ptl_pd, mem_handle, mem_descriptor)) {
 			SPDK_PTL_FATAL("Failed to keep memory handle in portals context");
 		}
 		SPDK_PTL_DEBUG("Registered memory with Portals");
