@@ -18,4 +18,12 @@ static inline struct ibv_qp *ptl_qp_get_ibv_qp(struct ptl_qp *ptl_qp)
 {
 	return &ptl_qp->fake_qp;
 }
+
+
+struct ptl_qp *ptl_qp_get_from_ibv_qp(struct ibv_qp * ibv_qp);
+
+static inline struct ptl_pd *ptl_qp_get_pd(struct ptl_qp * ptl_qp)
+{
+	return ptl_qp->ptl_pd;
+}
 #endif

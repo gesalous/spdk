@@ -3,6 +3,9 @@
  *   Copyright (c) Mellanox Technologies LTD. All rights reserved.
  *   Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
+#include "lib/rdma_provider/ptl_cq.h"
+#include "lib/rdma_provider/ptl_pd.h"
+#include "lib/rdma_provider/ptl_qp.h"
 #include "portals4.h"
 #include "portals_log.h"
 #include "ptl_context.h"
@@ -15,7 +18,12 @@
 #include "spdk_internal/rdma_provider.h"
 #include "spdk_internal/rdma_utils.h"
 #include <rdma/rdma_cma.h>
-
+#include <stdint.h>
+#define SPDK_PTL_IGNORE 0xffffffff
+#define SPDK_PTL_MATCH 1
+#define SPDK_PTL_SRV_ME_OPTS                                                                                                 \
+	PTL_ME_OP_PUT | PTL_ME_EVENT_LINK_DISABLE | PTL_ME_MAY_ALIGN | PTL_ME_IS_ACCESSIBLE | PTL_ME_MANAGE_LOCAL | \
+		PTL_ME_NO_TRUNCATE
 //from common.c staff
 #define SPDK_PTL_PROVIDER_SRQ_MAGIC_NUMBER 27081983UL
 #define SPDK_PTL_PROVIDER_QP_MAGIC_NUMBER 19082018UL
@@ -155,9 +163,7 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 				      struct ibv_recv_wr **bad_wr)
 {
 	ptl_handle_ni_t nic;
-	ptl_pt_index_t pt_index;
 	ptl_le_t le;
-	ptl_md_t md;
 	ptl_handle_le_t le_handle;
 	int ret;
 
@@ -165,16 +171,13 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		return 0;
 	}
 	//Now it's time to append the entries in portals
-	int i = 0;
 	for (struct ibv_recv_wr *wr = rdma_srq->recv_wrs.first; wr != NULL;
 	     wr = wr->next) {
-		SPDK_PTL_DEBUG("Ok iterated entry: %d", i++);
 		struct spdk_portals_provider_srq *portals_srq =
 			SPDK_CONTAINEROF(rdma_srq, struct spdk_portals_provider_srq, fake_srq);
 		SPDK_PTL_CHECK_SRQ(portals_srq);
 		nic = ptl_cnxt_get_ni_handle(portals_srq->ptl_context);
-		pt_index = ptl_cnxt_get_portal_index(portals_srq->ptl_context);
-		SPDK_PTL_DEBUG("Num sge is %d", wr->num_sge);
+		SPDK_PTL_DEBUG("Num of sges are %d", wr->num_sge);
 		for (int i = 0; i < wr->num_sge; i++) {
 			uint64_t memory_address = wr->sg_list[i].addr;  // Memory address of the buffer
 			uint32_t length = wr->sg_list[i].length;        // Length of the buffer
@@ -184,32 +187,23 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 				       i, memory_address, length, lkey);
 			// Initialize the matching entry
 			memset(&le, 0, sizeof(ptl_le_t));
-
-			// Setup the memory descriptor
-			md.start = (void *)wr->sg_list[i].addr;
-			md.length = wr->sg_list[i].length;
-			md.options = PTL_MD_EVENT_SUCCESS_DISABLE;  // Adjust options as needed
-			md.eq_handle = PTL_EQ_NONE;                // Adjust if you need events
-
-			// Setup the list entry
-			le.start = md.start;
-			le.length = md.length;
-			le.uid = PTL_UID_ANY;                      // Accept from any user
-			le.options = PTL_LE_OP_PUT;                // Allow PUT operations
-			le.match_id.rank = PTL_RANK_ANY;           // Accept from any rank
-			le.match_bits = 0;                         // Adjust match bits as needed
-			le.ignore_bits = 0;                        // Adjust ignore bits as needed
-
-			// Place custom context
-			void *user_ptr = (void *)(uintptr_t)wr->wr_id;
-
+			le.ignore_bits = SPDK_PTL_IGNORE;
+			le.match_bits = SPDK_PTL_MATCH;
+			le.match_id.phys.nid = PTL_NID_ANY;
+			le.match_id.phys.pid = PTL_PID_ANY;
+			le.min_free = 2;
+			le.start = (ptl_addr_t)wr->sg_list[i].addr;
+			le.length = wr->sg_list[i].length;
+			le.ct_handle = PTL_CT_NONE;
+			le.uid = PTL_UID_ANY;
+			le.options = SPDK_PTL_SRV_ME_OPTS;
 			// Append the memory entry
 			ret = PtlMEAppend(
 				      nic,                    // Network interface handle
-				      pt_index,               // Portal table index
+				      ptl_cnxt_get_portal_index(portals_srq->ptl_context), //Portals table index
 				      &le,                    // List entry
 				      PTL_PRIORITY_LIST,      // List type (PRIORITY or OVERFLOW)
-				      user_ptr,               // User pointer (can be used to store wr_id)
+				      (void *)wr->wr_id,               // User pointer (can be used to store wr_id)
 				      &le_handle              // Returned handle
 			      );
 			if (PTL_OK != ret) {
@@ -267,9 +261,9 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	ptl_pt_index_t pt_index;
 	ptl_le_t le;
 	ptl_md_t md;
-	ptl_handle_md_t md_handle;
 	ptl_handle_le_t le_handle;
 	int ret;
+
 
 	if (spdk_unlikely(spdk_rdma_qp->recv_wrs.first == NULL)) {
 		return 0;
@@ -296,32 +290,20 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 			SPDK_PTL_DEBUG("SGE %d: Address = 0x%lx, Length = %u, LKey = 0x%x\n",
 				       i, memory_address, length, lkey);
+
+			// Setup the list entry
 			// Initialize the matching entry
 			memset(&le, 0, sizeof(ptl_le_t));
-
-			// Setup the memory descriptor
-			md.start = (void *)wr->sg_list[i].addr;
-			md.length = wr->sg_list[i].length;
-			md.options = PTL_MD_EVENT_SUCCESS_DISABLE;  // Adjust options as needed
-			md.eq_handle = PTL_EQ_NONE;                // Adjust if you need events
-			// First bind the memory
-			ret = PtlMDBind(
-				      nic,                    // Network interface handle
-				      &md,                    // Memory descriptor
-				      &md_handle             // Returned MD handle
-			      );
-			if (PTL_OK != ret) {
-				SPDK_PTL_FATAL("Failed to bind memory descriptor");
-			}
-			// Setup the list entry
-			le.start = md.start;
-			le.length = md.length;
-			le.uid = PTL_UID_ANY;                      // Accept from any user
-			le.options = PTL_LE_OP_PUT;                // Allow PUT operations
-			le.match_id.rank = PTL_RANK_ANY;           // Accept from any rank
-			le.match_bits = 0;                         // Adjust match bits as needed
-			le.ignore_bits = 0;                        // Adjust ignore bits as needed
-
+			le.ignore_bits = SPDK_PTL_IGNORE;
+			le.match_bits = SPDK_PTL_MATCH;
+			le.match_id.phys.nid = PTL_NID_ANY;
+			le.match_id.phys.pid = PTL_PID_ANY;
+			le.min_free = 2;
+			le.start = (ptl_addr_t)wr->sg_list[i].addr;
+			le.length = wr->sg_list[i].length;
+			le.ct_handle = PTL_CT_NONE;
+			le.uid = PTL_UID_ANY;
+			le.options = SPDK_PTL_SRV_ME_OPTS;
 			// Place custom context
 			void *user_ptr = (void *)(uintptr_t)wr->wr_id;
 
@@ -486,53 +468,76 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				     struct ibv_send_wr **bad_wr)
 {
 
-	SPDK_PTL_DEBUG("Sending NVME_COMMANDS!");
-	int rc;
-
-
 	assert(spdk_rdma_qp);
 	assert(bad_wr);
+	int rc;
+	struct ptl_qp *ptl_qp = ptl_qp_get_from_ibv_qp(spdk_rdma_qp->qp);
+	struct ptl_pd *ptl_pd = ptl_qp_get_pd(ptl_qp);
+	struct ptl_context *ptl_context = ptl_cnxt_get();
+	struct ptl_mem_desc ptl_mem_desc;
+	ptl_process_t target = {.phys.nid = 1, .phys.pid = 16};
+	uint64_t local_offset;
+
 
 	if (spdk_unlikely(!spdk_rdma_qp->send_wrs.first)) {
 		SPDK_PTL_DEBUG("Nothing to SEND");
 		return 0;
 	}
-	SPDK_PTL_DEBUG("======> INFO about the send list");
+
+	SPDK_PTL_DEBUG("======> INFO about the send list of NVMe commands");
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
 		if (wr->num_sge != 1) {
 			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry");
 		}
 
 		for (int i = 0; i < wr->num_sge; i++) {
-			SPDK_PTL_DEBUG("=====> SGE[%d]: Address = 0x%lx, Length = %u bytes\n",
+			ptl_mem_desc = ptl_pd_get_mem_desc(ptl_pd, wr->sg_list[i].addr, wr->sg_list[i].length);
+
+			if (false == ptl_mem_desc.is_valid) {
+				SPDK_PTL_FATAL("MEM desc not found!");
+			}
+			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc.mem_desc.start;
+			SPDK_PTL_DEBUG("=====> SGE[%d]: Address = 0x%lx, Length = %u bytes local offset: %lu\n",
 				       i,
 				       wr->sg_list[i].addr,
-				       wr->sg_list[i].length);
-			// rc = PtlPut(spdk_rdma_qp->md_handle,      // MD handle
-			// 	    wr->sg_list[i].addr,           // local address
-			// 	    wr->sg_list[i].length,         // length
-			// 	    PTL_ACK_REQ,                   // ack request
-			// 	    spdk_rdma_qp->target_id,       // target process
-			// 	    spdk_rdma_qp->pt_index,        // portal table index
-			// 	    spdk_rdma_qp->match_bits,      // match bits
-			// 	    0,                             // remote offset
-			// 	    (void *)wr->wr_id,             // user ptr
-			// 	    0);                            // priority
+				       wr->sg_list[i].length, local_offset);
 
-			// if (rc != PTL_OK) {
-			// 	SPDK_PTL_FATAL("PtlPut failed with rc: %d", rc);
-			// }
+
+
+			rc = PtlPut(ptl_mem_desc.mem_handle,
+				    local_offset,           // local offset
+				    wr->sg_list[i].length,         // length
+				    PTL_ACK_REQ,                   // ack request
+				    target,       // target process
+				    ptl_cnxt_get_portal_index(ptl_context),        // portal table index
+				    0,      // match bits
+				    0,                             // remote offset
+				    NULL,             // user ptr
+				    0);                            // priority
+
+			if (rc != PTL_OK) {
+				SPDK_PTL_FATAL("PtlPut failed with rc: %d", rc);
+			}
+
+			ptl_ct_event_t ct_event;
+			rc = PtlCTWait(ptl_mem_desc.mem_desc.ct_handle, 1, &ct_event);
+			if (rc != PTL_OK) {
+				SPDK_PTL_FATAL("PtlCTWait failed");
+			}
+      SPDK_PTL_DEBUG("Ok got event!");
 		}
 
 	}
-	SPDK_PTL_DEBUG("======> Done with the send list");
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	rc = ibv_post_send(spdk_rdma_qp->qp, spdk_rdma_qp->send_wrs.first, bad_wr);
+	SPDK_PTL_DEBUG("======> 1 Done with the send list spin loop and shit");
+	while (1) {
+		rc++;
+	}
+	// rc = ibv_post_send(spdk_rdma_qp->qp, spdk_rdma_qp->send_wrs.first, bad_wr);
 
 	spdk_rdma_qp->send_wrs.first = NULL;
 	spdk_rdma_qp->stats->send.doorbell_updates++;
 
-	return rc;
+	return 0;
 
 }
 
