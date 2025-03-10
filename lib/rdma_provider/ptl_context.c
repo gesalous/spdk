@@ -19,105 +19,138 @@ struct ptl_cnxt_mem_handle {
 };
 
 static struct ptl_context ptl_context;
-typedef bool (*process_event)(ptl_event_t);
+typedef bool (*process_event)(ptl_event_t event, struct ibv_wc *wc);
 
-static bool ptl_cnxt_process_get(ptl_event_t event)
+
+
+static bool ptl_cnxt_process_get(ptl_event_t event, struct ibv_wc *wc)
 {
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
 
-static bool ptl_cnxt_process_get_overflow(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_put(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_put_overflow(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_atomic(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_atomic_overflow(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_fetch_atomic(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_fetch_atomic_overflow(ptl_event_t event)
+static bool ptl_cnxt_process_get_overflow(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
 
-static bool ptl_cnxt_process_reply(ptl_event_t event)
+static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
+{
+	struct ptl_context_le_metadata *le_meta;
+  SPDK_PTL_DEBUG("Got a PtlPut! Filling up wc");
+  memset(wc,0x00,sizeof(*wc));
+  wc->status =
+      event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
+  wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
+  le_meta = event.user_ptr;
+  wc->wr_id = le_meta->wr_id;
+  wc->byte_len = event.mlength;
+  wc->qp_num = 0;//Whatever
+  wc->src_qp = 0;
+
+	return true;
+}
+
+static bool ptl_cnxt_process_put_overflow(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
 
-static bool ptl_cnxt_process_send(ptl_event_t event)
+
+static bool ptl_cnxt_process_atomic(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
 
-static bool ptl_cnxt_process_ack(ptl_event_t event)
+
+static bool ptl_cnxt_process_atomic_overflow(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
 
-static bool ptl_cnxt_process_bt_disabled(ptl_event_t event)
-{
 
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-static bool ptl_cnxt_process_auto_unlink(ptl_event_t event)
-{
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
-}
-
-static bool ptl_cnxt_process_auto_free(ptl_event_t event)
+static bool ptl_cnxt_process_fetch_atomic(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
 
-static bool ptl_cnxt_process_search(ptl_event_t event)
+static bool ptl_cnxt_process_fetch_atomic_overflow(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_FATAL("UNIMPLEMENTED");
 	return true;
 }
-static bool ptl_cnxt_process_link(ptl_event_t event)
+
+static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
+{
+
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return true;
+}
+
+static bool ptl_cnxt_process_send(ptl_event_t event, struct ibv_wc *wc)
+{
+  SPDK_PTL_DEBUG("Got a PTL_EVENT_SENT! Ignoring Portals internal");
+
+	return false;
+}
+
+static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
+{
+
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc");
+  memset(wc,0x00,sizeof(*wc));
+  wc->status =
+      event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
+  wc->opcode = IBV_WC_SEND;
+  wc->wr_id = (uint64_t)event.user_ptr;
+  wc->byte_len = event.mlength;
+  wc->qp_num = 0;//Whatever
+  wc->src_qp = 0;
+
+	return true;
+}
+
+static bool ptl_cnxt_process_bt_disabled(ptl_event_t event, struct ibv_wc *wc)
+{
+
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return true;
+}
+
+static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
+{
+
+	SPDK_PTL_DEBUG("Got an unlink event ok go on and ignore its Portals internal");
+	return false;
+}
+
+static bool ptl_cnxt_process_auto_free(ptl_event_t event, struct ibv_wc *wc)
+{
+
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return true;
+}
+
+static bool ptl_cnxt_process_search(ptl_event_t event, struct ibv_wc *wc)
+{
+
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return true;
+}
+
+
+static bool ptl_cnxt_process_link(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_DEBUG("PROCESS LINK EVENT OK go on");
@@ -175,23 +208,22 @@ static process_event handler[16] = {
 // 	}
 // }
 
-static int ptx_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
+static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 			    struct ibv_wc *wc)
 {
   static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 	ptl_event_t event;
 	int ret;
+  int events_processed = 0;
 
   pthread_mutex_lock(&g_lock);
   struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(ibv_cq);
 
 
-	while (1) {
+	while (events_processed < num_entries) {
 		ret = PtlEQGet(ptl_cq_get_queue(ptl_cq), &event);
 		if (ret == PTL_OK) {
-      SPDK_PTL_DEBUG("Got event %d",event.type);
-			handler[event.type](event);
-
+			events_processed += handler[event.type](event, &wc[events_processed])?1:0;
 		} else if (ret == PTL_EQ_EMPTY) {
 			// SPDK_PTL_DEBUG("No events ok COOL");
 			break;
@@ -203,7 +235,7 @@ static int ptx_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 		}
 	}
   pthread_mutex_unlock(&g_lock);
-	return 0;
+	return events_processed;
 }
 
 struct ptl_context *ptl_cnxt_get(void)
@@ -239,7 +271,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	}
 
 	SPDK_PTL_DEBUG("Setting callbacl for ptl_cnxt_poll_cq");
-	ptl_context.fake_ibv_cnxt.ops.poll_cq = ptx_cnxt_poll_cq;
+	ptl_context.fake_ibv_cnxt.ops.poll_cq = ptl_cnxt_poll_cq;
 	ptl_context.fake_cq.context = &ptl_context.fake_ibv_cnxt;
 
 	SPDK_PTL_DEBUG("SUCCESSFULLY create and initialized PORTALS context");
