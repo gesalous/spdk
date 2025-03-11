@@ -11,9 +11,9 @@ struct ptl_context;
 struct ibv_context;
 struct ibv_pd;
 
-struct ptl_context_le_metadata{
-  uint64_t wr_id;
-  ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
+struct ptl_context_le_metadata {
+	uint64_t wr_id;
+	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 
 

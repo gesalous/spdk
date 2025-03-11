@@ -31,11 +31,12 @@ struct ptl_qp *ptl_qp_create(struct ptl_pd *ptl_pd, struct ptl_cq *send_queue,
 	return ptl_qp;
 }
 
-struct ptl_qp * ptl_qp_get_from_ibv_qp(struct ibv_qp * ibv_qp){
-  struct ptl_qp *ptl_qp = SPDK_CONTAINEROF(ibv_qp, struct ptl_qp, fake_qp);
-  if(ptl_qp->object_type != PTL_QP){
-    SPDK_PTL_FATAL("FATAL Corrupted");
-  }
-  return ptl_qp;
+struct ptl_qp *ptl_qp_get_from_ibv_qp(struct ibv_qp * ibv_qp)
+{
+	struct ptl_qp *ptl_qp = SPDK_CONTAINEROF(ibv_qp, struct ptl_qp, fake_qp);
+	if (ptl_qp->object_type != PTL_QP) {
+		SPDK_PTL_FATAL("FATAL Corrupted");
+	}
+	return ptl_qp;
 }
 
