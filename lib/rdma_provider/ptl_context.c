@@ -39,16 +39,16 @@ static bool ptl_cnxt_process_get_overflow(ptl_event_t event, struct ibv_wc *wc)
 static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 {
 	struct ptl_context_le_metadata *le_meta;
-  SPDK_PTL_DEBUG("Got a PtlPut! Filling up wc");
-  memset(wc,0x00,sizeof(*wc));
-  wc->status =
-      event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
-  wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
-  le_meta = event.user_ptr;
-  wc->wr_id = le_meta->wr_id;
-  wc->byte_len = event.mlength;
-  wc->qp_num = 0;//Whatever
-  wc->src_qp = 0;
+	SPDK_PTL_DEBUG("Got a PtlPut! Filling up wc");
+	memset(wc, 0x00, sizeof(*wc));
+	wc->status =
+		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
+	wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
+	le_meta = event.user_ptr;
+	wc->wr_id = le_meta->wr_id;
+	wc->byte_len = event.mlength;
+	wc->qp_num = 0;//Whatever
+	wc->src_qp = 0;
 
 	return true;
 }
@@ -100,7 +100,7 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 
 static bool ptl_cnxt_process_send(ptl_event_t event, struct ibv_wc *wc)
 {
-  SPDK_PTL_DEBUG("Got a PTL_EVENT_SENT! Ignoring Portals internal");
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_SENT! Ignoring Portals internal");
 
 	return false;
 }
@@ -109,14 +109,14 @@ static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 {
 
 	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc");
-  memset(wc,0x00,sizeof(*wc));
-  wc->status =
-      event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
-  wc->opcode = IBV_WC_SEND;
-  wc->wr_id = (uint64_t)event.user_ptr;
-  wc->byte_len = event.mlength;
-  wc->qp_num = 0;//Whatever
-  wc->src_qp = 0;
+	memset(wc, 0x00, sizeof(*wc));
+	wc->status =
+		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
+	wc->opcode = IBV_WC_SEND;
+	wc->wr_id = (uint64_t)event.user_ptr;
+	wc->byte_len = event.mlength;
+	wc->qp_num = 0;//Whatever
+	wc->src_qp = 0;
 
 	return true;
 }
@@ -211,19 +211,19 @@ static process_event handler[16] = {
 static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 			    struct ibv_wc *wc)
 {
-  static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
+	static pthread_mutex_t g_lock = PTHREAD_MUTEX_INITIALIZER;
 	ptl_event_t event;
 	int ret;
-  int events_processed = 0;
+	int events_processed = 0;
 
-  pthread_mutex_lock(&g_lock);
-  struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(ibv_cq);
+	pthread_mutex_lock(&g_lock);
+	struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(ibv_cq);
 
 
 	while (events_processed < num_entries) {
 		ret = PtlEQGet(ptl_cq_get_queue(ptl_cq), &event);
 		if (ret == PTL_OK) {
-			events_processed += handler[event.type](event, &wc[events_processed])?1:0;
+			events_processed += handler[event.type](event, &wc[events_processed]) ? 1 : 0;
 		} else if (ret == PTL_EQ_EMPTY) {
 			// SPDK_PTL_DEBUG("No events ok COOL");
 			break;
@@ -234,21 +234,21 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 			SPDK_PTL_FATAL("PtlEQGet failed with error code %d", ret);
 		}
 	}
-  pthread_mutex_unlock(&g_lock);
+	pthread_mutex_unlock(&g_lock);
 	return events_processed;
 }
 
 struct ptl_context *ptl_cnxt_get(void)
 {
-  static pthread_mutex_t cnxt_lock = PTHREAD_MUTEX_INITIALIZER;
+	static pthread_mutex_t cnxt_lock = PTHREAD_MUTEX_INITIALIZER;
 	int ret;
-  pthread_mutex_lock(&cnxt_lock);
+	pthread_mutex_lock(&cnxt_lock);
 	if (ptl_context.initialized) {
 		goto exit;
 	}
-  
+
 	ptl_context.object_type = PTL_CONTEXT;
-  ptl_context.portals_idx = 0;
+	ptl_context.portals_idx = 0;
 	SPDK_PTL_DEBUG("Calling PtlInit()");
 	ret = PtlInit();
 	if (ret != PTL_OK) {
@@ -277,7 +277,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	SPDK_PTL_DEBUG("SUCCESSFULLY create and initialized PORTALS context");
 	ptl_context.initialized = true;
 exit:
-  pthread_mutex_unlock(&cnxt_lock);
+	pthread_mutex_unlock(&cnxt_lock);
 	return &ptl_context;
 }
 
@@ -309,9 +309,9 @@ ptl_pt_index_t ptl_cnxt_get_portal_index(struct ptl_context *cnxt)
 
 ptl_handle_ni_t ptl_cnxt_get_ni_handle(struct ptl_context *cnxt)
 {
-  if(false == cnxt->initialized){
-    SPDK_PTL_FATAL("Context is not initialized!");
-  }
+	if (false == cnxt->initialized) {
+		SPDK_PTL_FATAL("Context is not initialized!");
+	}
 	return cnxt->ni_handle;
 }
 

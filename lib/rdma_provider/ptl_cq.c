@@ -9,14 +9,15 @@
 
 struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 {
-  static struct ptl_cq event_queue = {.lock = PTHREAD_MUTEX_INITIALIZER,
-                                      .object_type = PTL_CQ};
+	static struct ptl_cq event_queue = {.lock = PTHREAD_MUTEX_INITIALIZER,
+						    .object_type = PTL_CQ
+	};
 
-  struct ptl_cq *ptl_cq;
-  int ret;
-  RDMA_CM_LOCK(&event_queue.lock);
-  if (event_queue.initialized) {
-    goto exit;
+	struct ptl_cq *ptl_cq;
+	int ret;
+	RDMA_CM_LOCK(&event_queue.lock);
+	if (event_queue.initialized) {
+		goto exit;
 	}
 
 
@@ -35,13 +36,13 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 	if (ret != PTL_OK) {
 		SPDK_PTL_FATAL("PtlPTAlloc failed");
 	}
-  SPDK_PTL_DEBUG("Allocated portals index: %u",ptl_cq->ptl_context->portals_idx);
+	SPDK_PTL_DEBUG("Allocated portals index: %u", ptl_cq->ptl_context->portals_idx);
 
 	ptl_cq->cq_context = cq_context;
-  
-  SPDK_PTL_DEBUG("Initialized event queue! %p",ptl_cq);
+
+	SPDK_PTL_DEBUG("Initialized event queue! %p", ptl_cq);
 exit:
 	RDMA_CM_UNLOCK(&event_queue.lock);
-  return ptl_cq;
+	return ptl_cq;
 }
 

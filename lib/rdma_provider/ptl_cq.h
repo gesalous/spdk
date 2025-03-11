@@ -24,9 +24,9 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context);
 
 static inline ptl_handle_eq_t ptl_cq_get_queue(struct ptl_cq *ptl_cq)
 {
-  if(false == ptl_cq->initialized){
-    SPDK_PTL_FATAL("Uninitialized event queue");
-  }
+	if (false == ptl_cq->initialized) {
+		SPDK_PTL_FATAL("Uninitialized event queue");
+	}
 	return ptl_cq->eq_handle;
 }
 

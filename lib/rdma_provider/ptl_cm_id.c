@@ -25,9 +25,9 @@ struct ptl_cm_id *ptl_cm_id_create(struct rdma_cm_ptl_event_channel *ptl_channel
 	return ptl_id;
 }
 
-void ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
-			    struct rdma_cm_id *id,
-			    enum rdma_cm_event_type event_type)
+struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
+		struct rdma_cm_id *id,
+		enum rdma_cm_event_type event_type, const void *private_data, size_t private_data_len)
 {
 
 	struct rdma_cm_event *fake_event;
@@ -40,24 +40,37 @@ void ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
 	assert(id->context);
 	fake_event->status = 0;
 	fake_event->event = event_type;
-	fake_event->param.conn.private_data = ptl_id->fake_data;
+	//original
+	// fake_event->param.conn.private_data = ptl_id->fake_data;
+	/*rdma_cm library uses the private_data field to negotiate a new connection*/
+	fake_event->param.conn.private_data = private_data;
+	fake_event->param.conn.private_data_len = private_data_len;
+  fake_event->param.conn.initiator_depth = 32;
+  fake_event->param.conn.responder_resources = 0;
+  fake_event->param.conn.retry_count = 7;
+  fake_event->param.conn.rnr_retry_count = 7;
+	return fake_event;
+}
 
+void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
+			 struct rdma_cm_event *event)
+{
 	rdma_cm_ptl_event_channel_lock_event_deque(ptl_id->ptl_channel);
 	if (false ==
-	    deque_push_front(ptl_id->ptl_channel->events_deque, fake_event)) {
+	    deque_push_front(ptl_id->ptl_channel->events_deque, event)) {
 		SPDK_PTL_FATAL("Failed to queue fake event");
 	}
-	SPDK_PTL_DEBUG(" ********* Added event of type: %d", event_type);
+	SPDK_PTL_DEBUG(" ********* Added event of type: %d", event->event);
+  uint64_t result;
+    if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
+        perror("read");
+        SPDK_PTL_FATAL("Failed to write event");
+    }
 	rdma_cm_ptl_event_channel_unlock_event_deque(ptl_id->ptl_channel);
-	/*wake up guys waiting*/
-	// if (-1 == sem_post(&ptl_id->ptl_channel->sem)) {
-	//   perror("sem_post failed REASON:");
-	//   SPDK_PTL_FATAL("Sorry sem_post failed bye!");
-	// }
 }
 
 void ptl_cm_id_set_fake_data(struct ptl_cm_id *ptl_id,
-				  const void *fake_data)
+			     const void *fake_data)
 {
 	ptl_id->fake_data = fake_data;
 }
