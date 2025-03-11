@@ -11,8 +11,8 @@
 struct spdk_rdma_utils_mem_map;
 struct ptl_mem_desc {
 	ptl_handle_md_t mem_handle;
-  ptl_md_t mem_desc;
-  bool is_valid;
+	ptl_md_t mem_desc;
+	bool is_valid;
 };
 
 struct ptl_pd {

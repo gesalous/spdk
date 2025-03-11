@@ -10,7 +10,6 @@
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
 #include <sys/socket.h>
-
 struct ptl_cm_id {
 	ptl_obj_type_e object_type;
 	struct rdma_cm_ptl_event_channel *ptl_channel;
@@ -41,9 +40,13 @@ static inline struct ptl_cm_id *ptl_cm_id_get(struct rdma_cm_id *id)
 	return ptl_id;
 }
 
-void ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
-			    struct rdma_cm_id *id,
-			    enum rdma_cm_event_type event_type);
+struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
+		struct rdma_cm_id *id,
+		enum rdma_cm_event_type event_type, const void *private_data, size_t private_data_len);
+
+
+void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
+			 struct rdma_cm_event *event);
 
 static inline struct sockaddr *
 rdma_cm_ptl_id_get_src_addr(struct ptl_cm_id *ptl_id)
