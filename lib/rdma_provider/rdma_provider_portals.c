@@ -144,10 +144,10 @@ bool spdk_rdma_provider_srq_queue_recv_wrs(
 		recv_wrs->last = last;
 		ret = false;
 	}
-	SPDK_PTL_DEBUG("Done exact the same steps as in IBV case total "
-		       "submitted wrs: %lu current: %lu",
-		       recv_stats->num_submitted_wrs,
-		       recv_stats->num_submitted_wrs - diff);
+	// SPDK_PTL_DEBUG("Done exact the same steps as in IBV case total "
+	// 	       "submitted wrs: %lu current: %lu",
+	// 	       recv_stats->num_submitted_wrs,
+	// 	       recv_stats->num_submitted_wrs - diff);
 	return ret;
 }
 
@@ -185,12 +185,12 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		if (wr->num_sge != SPDK_PTL_IOVEC_SIZE) {
 			SPDK_PTL_FATAL("IOVECTOR too small size is: %d needs %d", SPDK_PTL_IOVEC_SIZE, wr->num_sge);
 		}
-		SPDK_PTL_DEBUG("Num of sges are %d", wr->num_sge);
+		// SPDK_PTL_DEBUG("Num of sges are %d", wr->num_sge);
 		for (int i = 0; i < wr->num_sge; i++) {
 			le_meta->io_vector[i].iov_base = (ptl_addr_t)wr->sg_list[i].addr;
 			le_meta->io_vector[i].iov_len = wr->sg_list[i].length;
-			SPDK_PTL_DEBUG("iovector[%d] = : Address = %p, Length = %lu\n",
-				       i, le_meta->io_vector[i].iov_base, le_meta->io_vector[i].iov_len);
+			// SPDK_PTL_DEBUG("iovector[%d] = : Address = %p, Length = %lu\n",
+			// 	       i, le_meta->io_vector[i].iov_base, le_meta->io_vector[i].iov_len);
 		}
 
 		/*Initialize the list matching entry*/
@@ -270,13 +270,10 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	ptl_pt_index_t pt_index;
 	ptl_le_t le;
 	ptl_handle_le_t le_handle;
-  struct ptl_context_le_metadata *le_meta = calloc(1UL,sizeof(*le_meta));
+	struct ptl_context_le_metadata *le_meta = calloc(1UL, sizeof(*le_meta));
 	int ret;
 
 
-	if (spdk_unlikely(spdk_rdma_qp->recv_wrs.first == NULL)) {
-		return 0;
-	}
 	/* gesalous start */
 	portals_qp = SPDK_CONTAINEROF(spdk_rdma_qp, struct spdk_portals_provider_qp, fake_spdk_rdma_qp);
 	if (SPDK_PTL_PROVIDER_QP_MAGIC_NUMBER != portals_qp->magic_number) {
@@ -284,6 +281,8 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	}
 
 	if (spdk_unlikely(spdk_rdma_qp->recv_wrs.first == NULL)) {
+		SPDK_PTL_DEBUG("Nothing to register for receive?");
+		// raise(SIGINT);
 		return 0;
 	}
 	//Now it's time to append the entries in portals
@@ -316,7 +315,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		le.ct_handle = PTL_CT_NONE;
 		le.uid = PTL_UID_ANY;
 		le.options = SPDK_PTL_SRV_ME_OPTS | PTL_IOVEC;
-    le_meta->wr_id = wr->wr_id;
+		le_meta->wr_id = wr->wr_id;
 
 		// Append the memory entry
 		ret = PtlLEAppend(
@@ -413,18 +412,23 @@ spdk_rdma_provider_qp_accept(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 {
 	assert(spdk_rdma_qp != NULL);
 	assert(spdk_rdma_qp->cm_id != NULL);
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return 0;
+  struct ptl_cm_id *ptl_id = ptl_cm_id_get(spdk_rdma_qp->cm_id);
+  SPDK_PTL_DEBUG("At accept got a valid ptl_id queue pair id: %d",ptl_id->fake_cm_id.qp->qp_num);
+	return rdma_accept(spdk_rdma_qp->cm_id, conn_param);
 }
 
 int spdk_rdma_provider_qp_complete_connect(
 	struct spdk_rdma_provider_qp *spdk_rdma_qp)
 {
+	struct rdma_cm_event *fake_event;
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(spdk_rdma_qp->cm_id);
 	/* Nothing to be done for Portals */
 	SPDK_PTL_DEBUG("CREATE FAKE RDMA_CM_EVENT_ESTABLISHED event");
-	ptl_cm_id_create_event(ptl_cm_id_get(spdk_rdma_qp->cm_id),
-			       spdk_rdma_qp->cm_id,
-			       RDMA_CM_EVENT_ESTABLISHED);
+	fake_event = ptl_cm_id_create_event(ptl_id,
+					    spdk_rdma_qp->cm_id,
+					    RDMA_CM_EVENT_ESTABLISHED, NULL, 0);
+	ptl_cm_id_add_event(ptl_id, fake_event);
+
 	return 0;
 }
 
@@ -492,6 +496,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	if (spdk_unlikely(NULL == spdk_rdma_qp->send_wrs.first)) {
 		SPDK_PTL_DEBUG("Nothing to SEND");
+		// raise(SIGINT);
 		return 0;
 	}
 
@@ -514,7 +519,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				       wr->sg_list[i].length, local_offset);
 
 
-      
+
 			rc = PtlPut(ptl_mem_desc.mem_handle,
 				    local_offset,           // local offset
 				    wr->sg_list[i].length,         // length
@@ -529,22 +534,23 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			if (rc != PTL_OK) {
 				SPDK_PTL_FATAL("PtlPut failed with rc: %d", rc);
 			}
+			// raise(SIGINT);
 
 			// ptl_ct_event_t ct_event;
 			// rc = PtlCTWait(ptl_mem_desc.mem_desc.ct_handle, 1, &ct_event);
 			// struct ptl_cq *ptl_cq = ptl_cq_get_instance(NULL);
-   //  again:;
+			//  again:;
 			// ptl_event_t event;
 			// rc = PtlEQWait(ptl_cq_get_queue(ptl_cq), &event);
 			// if (PTL_OK != rc) {
 			// 	SPDK_PTL_FATAL("PtlEQWait failed code: %d", rc);
 			// }
 			// SPDK_PTL_DEBUG("Ok got event rc is %d event type %d!", rc, event.type);
-   //    if(event.type != PTL_EVENT_SEND && event.type != PTL_EVENT_ACK){
-   //      SPDK_PTL_FATAL("Unexpected event type: %d",event.type);
-   //    }
-   //    if(event.type != PTL_EVENT_ACK)
-   //      goto again;
+			//    if(event.type != PTL_EVENT_SEND && event.type != PTL_EVENT_ACK){
+			//      SPDK_PTL_FATAL("Unexpected event type: %d",event.type);
+			//    }
+			//    if(event.type != PTL_EVENT_ACK)
+			//      goto again;
 		}
 
 	}
@@ -553,7 +559,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	spdk_rdma_qp->send_wrs.first = NULL;
 	spdk_rdma_qp->stats->send.doorbell_updates++;
-
+  sleep(10);
 	return 0;
 
 }
