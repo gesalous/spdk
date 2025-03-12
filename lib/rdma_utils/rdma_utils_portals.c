@@ -2,7 +2,7 @@
  *   Copyright (c) Intel Corporation. All rights reserved.
  *   Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
-#include "../rdma_provider/portals_log.h"
+#include "../rdma_provider/ptl_log.h"
 #include "../rdma_provider/ptl_cm_id.h"
 #include "../rdma_provider/ptl_context.h"
 #include "../rdma_provider/ptl_cq.h"

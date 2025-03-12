@@ -1,5 +1,5 @@
 #include "ptl_cq.h"
-#include "lib/rdma_provider/portals_log.h"
+#include "lib/rdma_provider/ptl_log.h"
 #include "lib/rdma_provider/ptl_context.h"
 #include "lib/rdma_provider/ptl_object_types.h"
 #include "portals4.h"

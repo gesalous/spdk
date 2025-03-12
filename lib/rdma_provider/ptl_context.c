@@ -1,5 +1,5 @@
 #include "ptl_context.h"
-#include "portals_log.h"
+#include "ptl_log.h"
 #include "ptl_cq.h"
 #include "ptl_object_types.h"
 #include "ptl_pd.h"
