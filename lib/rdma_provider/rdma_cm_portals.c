@@ -8,7 +8,7 @@
 #include "ptl_qp.h"
 #include "rdma_cm_ptl_event_channel.h"
 #include "spdk/util.h"
-#include "spdk_ptl_macros.h"
+#include "ptl_macros.h"
 #include <asm-generic/errno-base.h>
 #include <dlfcn.h>
 #include <infiniband/verbs.h>

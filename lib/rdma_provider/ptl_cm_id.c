@@ -4,7 +4,7 @@
 #include "ptl_log.h"
 #include "ptl_context.h"
 #include "rdma_cm_ptl_event_channel.h"
-#include "spdk_ptl_macros.h"
+#include "ptl_macros.h"
 #include <assert.h>
 #include <stdlib.h>
 

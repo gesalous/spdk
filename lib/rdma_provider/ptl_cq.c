@@ -3,7 +3,7 @@
 #include "lib/rdma_provider/ptl_context.h"
 #include "lib/rdma_provider/ptl_object_types.h"
 #include "portals4.h"
-#include "spdk_ptl_macros.h"
+#include "ptl_macros.h"
 #define SPDK_PORTALS_ID 0
 
 
