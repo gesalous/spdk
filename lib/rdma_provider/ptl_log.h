@@ -1,5 +1,5 @@
-#ifndef PORTALS_LOG_H
-#define PORTALS_LOG_H
+#ifndef PTL_LOG_H
+#define PTL_LOG_H
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
