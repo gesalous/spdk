@@ -7,7 +7,7 @@
 #include "lib/rdma_provider/ptl_pd.h"
 #include "lib/rdma_provider/ptl_qp.h"
 #include "portals4.h"
-#include "portals_log.h"
+#include "ptl_log.h"
 #include "ptl_cm_id.h"
 #include "ptl_context.h"
 #include "ptl_cq.h"
