@@ -1,5 +1,5 @@
 #include "deque.h"
-#include "portals_log.h"
+#include "ptl_log.h"
 #include <assert.h>
 #include <pthread.h>
 #include <stdio.h>

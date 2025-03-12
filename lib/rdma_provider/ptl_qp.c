@@ -1,10 +1,8 @@
 #include "ptl_qp.h"
-#include "lib/rdma_provider/portals_log.h"
-#include "lib/rdma_provider/ptl_cm_id.h"
-#include "lib/rdma_provider/ptl_cq.h"
-#include "lib/rdma_provider/ptl_pd.h"
-#include "portals_log.h"
 #include "ptl_cm_id.h"
+#include "ptl_cq.h"
+#include "ptl_log.h"
+#include "ptl_pd.h"
 #include "spdk/util.h"
 #include <stdlib.h>
 

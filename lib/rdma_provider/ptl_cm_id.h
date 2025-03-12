@@ -1,6 +1,6 @@
 #ifndef PTL_CM_ID_H
 #define PTL_CM_ID_H
-#include "lib/rdma_provider/portals_log.h"
+#include "lib/rdma_provider/ptl_log.h"
 #include "lib/rdma_provider/ptl_context.h"
 #include "lib/rdma_provider/ptl_cq.h"
 #include "lib/rdma_provider/ptl_pd.h"

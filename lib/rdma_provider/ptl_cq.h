@@ -1,6 +1,6 @@
 #ifndef PTL_CQ_H
 #define PTL_CQ_H
-#include "lib/rdma_provider/portals_log.h"
+#include "lib/rdma_provider/ptl_log.h"
 #include "ptl_object_types.h"
 #include "spdk/util.h"
 #include <infiniband/verbs.h>
