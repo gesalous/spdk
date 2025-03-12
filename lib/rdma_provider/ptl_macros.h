@@ -1,5 +1,5 @@
-#ifndef SPDK_PTL_MACROS_H
-#define SPDK_PTL_MACROS_H
+#ifndef PTL_MACROS_H
+#define PTL_MACROS_H
 
 #define RDMA_CM_LOCK_INIT(x) do { \
     if (pthread_mutex_init(x,NULL)) { \

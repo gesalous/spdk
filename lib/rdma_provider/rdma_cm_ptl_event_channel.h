@@ -1,7 +1,7 @@
 #ifndef RDMA_CM_PTL_EVENT_CHANNEL
 #define RDMA_CM_PTL_EVENT_CHANNEL
 #include "ptl_log.h"
-#include "spdk_ptl_macros.h"
+#include "ptl_macros.h"
 #include <pthread.h>
 #include <rdma/rdma_cma.h>
 #include <spdk/util.h>
