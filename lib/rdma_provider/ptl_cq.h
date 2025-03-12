@@ -1,13 +1,13 @@
 #ifndef PTL_CQ_H
 #define PTL_CQ_H
-#include "lib/rdma_provider/ptl_log.h"
+#include "ptl_config.h"
+#include "ptl_log.h"
 #include "ptl_object_types.h"
 #include "spdk/util.h"
 #include <infiniband/verbs.h>
 #include <portals4.h>
 #include <pthread.h>
 #include <stdint.h>
-#define PTL_CQ_SIZE 4096
 struct ptl_context;
 
 struct ptl_cq {

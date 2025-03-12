@@ -1,10 +1,10 @@
 #include "ptl_cq.h"
-#include "lib/rdma_provider/ptl_log.h"
-#include "lib/rdma_provider/ptl_context.h"
-#include "lib/rdma_provider/ptl_object_types.h"
-#include "portals4.h"
+#include "ptl_config.h"
+#include "ptl_context.h"
+#include "ptl_log.h"
 #include "ptl_macros.h"
-#define SPDK_PORTALS_ID 0
+#include "ptl_object_types.h"
+#include <portals4.h>
 
 
 struct ptl_cq *ptl_cq_get_instance(void *cq_context)
@@ -32,7 +32,7 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 	}
 	ret =
 		PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cq->ptl_context), 0,
-			   ptl_cq->eq_handle, SPDK_PORTALS_ID, &ptl_cq->ptl_context->portals_idx);
+			   ptl_cq->eq_handle, PTL_DATA_PLANE_PT_INDEX, &ptl_cq->ptl_context->portals_idx);
 	if (ret != PTL_OK) {
 		SPDK_PTL_FATAL("PtlPTAlloc failed");
 	}
