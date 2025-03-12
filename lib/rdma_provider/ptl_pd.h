@@ -1,6 +1,6 @@
 #ifndef PTL_PD_H
 #define PTL_PD_H
-#include "lib/rdma_provider/portals_log.h"
+#include "lib/rdma_provider/ptl_log.h"
 #include "ptl_object_types.h"
 #include <infiniband/verbs.h>
 #include <portals4.h>

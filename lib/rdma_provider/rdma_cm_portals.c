@@ -1,7 +1,7 @@
 #include "deque.h"
 #include "lib/rdma_provider/dlist.h"
 #include "lib/rdma_provider/ptl_cq.h"
-#include "portals_log.h"
+#include "ptl_log.h"
 #include "ptl_cm_id.h"
 #include "ptl_context.h"
 #include "ptl_pd.h"
@@ -21,7 +21,6 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#define RDMA_CM_PTL_BLOCKING_CHANNEL 0
 
 
 /**
@@ -45,12 +44,6 @@ rdma_create_event_channel(void)
 		return NULL;
 	}
 	ptl_channel->magic_number = RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER;
-#if RDMA_CM_PTL_BLOCKING_CHANNEL
-	if (sem_init(&ptl_channel->sem, 0, 0) == -1) {
-		perror("sem init failed reason:");
-		SPDK_PTL_FATAL("sem init failed");
-	}
-#endif
 	ptl_channel->open_fake_connections = dlist_create(NULL, NULL);
 	RDMA_CM_LOCK_INIT(&ptl_channel->events_deque_lock);
 	ptl_channel->events_deque = deque_create(NULL);
@@ -73,7 +66,6 @@ struct ibv_context **rdma_get_devices(int *num_devices)
 	struct ptl_context *cnxt;
 
 	SPDK_PTL_DEBUG("RDMACM: Intercepted rdma_get_devices");
-	SPDK_PTL_DEBUG("RDMACM: Calling PtlInit()");
 	cnxt = ptl_cnxt_get();
 
 	devices = calloc(1UL, 2 * sizeof(struct ibv_context *));
@@ -194,12 +186,6 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 	*id = &ptl_id->fake_cm_id;
 	dlist_append(ptl_channel->open_fake_connections, ptl_id);
 	SPDK_PTL_DEBUG("Trapped create cm id FAKED it, waking up possible guys for the event");
-#if RDMA_CM_PTL_BLOCKING_CHANNEL
-	if (sem_post(&ptl_channel->sem) == -1) {
-		perror("sem_post failed REASON:");
-		SPDK_PTL_FATAL("Sorry sem_post failed bye!");
-	}
-#endif
 	return 0;
 }
 
@@ -241,9 +227,6 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 	struct rdma_cm_ptl_event_channel *ptl_channel;
 	struct rdma_cm_event *fake_event;
 	ptl_channel = rdma_cm_ptl_event_channel_get(channel);
-#if RDMA_CM_PTL_BLOCKING_CHANNEL
-get_event:
-#endif
 	fake_event = NULL;
 	RDMA_CM_LOCK(&ptl_channel->events_deque_lock);
 	fake_event = deque_pop_front(ptl_channel->events_deque);
@@ -266,12 +249,7 @@ get_event:
     }
 		return 0;
 	}
-#if RDMA_CM_PTL_BLOCKING_CHANNEL
-	sem_wait(&ptl_channel->sem);
-	goto get_event;
-#else
 	SPDK_PTL_DEBUG("Got nothing shit EAGAIN!");
-#endif
 	errno = EAGAIN;
 	return EAGAIN;
 }
@@ -414,6 +392,7 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 	ptl_cm_id_set_recv_queue(ptl_id, recv_queue);
 
 	SPDK_PTL_DEBUG("Successfully created Portals Queue Pair Object and updated Portal CM ID and Queue Pair pointers");
+  raise(SIGINT);
 	return 0;
 }
 

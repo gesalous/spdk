@@ -1,5 +1,5 @@
 #include "ptl_pd.h"
-#include "lib/rdma_provider/portals_log.h"
+#include "ptl_log.h"
 #include "ptl_object_types.h"
 
 struct ptl_pd *ptl_pd_create(struct ptl_context *ptl_context)
