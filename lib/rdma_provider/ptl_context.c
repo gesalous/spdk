@@ -242,6 +242,8 @@ struct ptl_context *ptl_cnxt_get(void)
 {
 	static pthread_mutex_t cnxt_lock = PTHREAD_MUTEX_INITIALIZER;
 	int ret;
+	const char *srv_pid;
+	const char *srv_nid;
 	pthread_mutex_lock(&cnxt_lock);
 	if (ptl_context.initialized) {
 		goto exit;
@@ -255,14 +257,22 @@ struct ptl_context *ptl_cnxt_get(void)
 		SPDK_PTL_FATAL("PtlInit failed");
 	}
 
-	const char *srv_nid = getenv("SERVER_NID");
-	if (NULL == srv_nid) {
-		SPDK_PTL_FATAL("Sorry you need to set SERVER_NID env variable");
-	}
-	const char *srv_pid = getenv("SERVER_PID");
+
+	srv_pid = getenv("SERVER_PID");
+
 	if (NULL == srv_pid) {
 		SPDK_PTL_FATAL("Sorry you need to set SERVER_PID env variable");
 	}
+	srv_nid = getenv("SERVER_NID");
+
+	if (NULL == srv_nid) {
+		SPDK_PTL_FATAL("Sorry you need to set SERVER_NID env variable");
+	}
+	/*XXX TODO XXX Check for errors and staff*/
+	ptl_context.pid = atoi(srv_pid);
+	ptl_context.nid = atoi(srv_nid);
+
+
 	ret = PtlNIInit((int)atoi(srv_nid), PTL_NI_MATCHING | PTL_NI_PHYSICAL,
 			(int)atoi(srv_pid), NULL, NULL, &ptl_context.ni_handle);
 

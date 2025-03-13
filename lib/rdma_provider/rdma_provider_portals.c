@@ -3,14 +3,14 @@
  *   Copyright (c) Mellanox Technologies LTD. All rights reserved.
  *   Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
-#include "lib/rdma_provider/ptl_cq.h"
-#include "lib/rdma_provider/ptl_pd.h"
-#include "lib/rdma_provider/ptl_qp.h"
 #include "portals4.h"
-#include "ptl_log.h"
 #include "ptl_cm_id.h"
+#include "ptl_config.h"
 #include "ptl_context.h"
 #include "ptl_cq.h"
+#include "ptl_log.h"
+#include "ptl_pd.h"
+#include "ptl_qp.h"
 #include "spdk/likely.h"
 #include "spdk/log.h"
 #include "spdk/stdinc.h"
@@ -20,12 +20,7 @@
 #include "spdk_internal/rdma_utils.h"
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
-#define SPDK_PTL_IGNORE 0xffffffff
-#define SPDK_PTL_MATCH 1
-#define SPDK_PTL_SRV_ME_OPTS                                                                                                 \
-	PTL_ME_OP_PUT | PTL_ME_EVENT_LINK_DISABLE | PTL_ME_MAY_ALIGN | PTL_ME_IS_ACCESSIBLE | PTL_ME_MANAGE_LOCAL | \
-		PTL_ME_NO_TRUNCATE | PTL_LE_USE_ONCE
-#define SPDK_PTL_IOVEC_SIZE 2
+
 //from common.c staff
 #define SPDK_PTL_PROVIDER_SRQ_MAGIC_NUMBER 27081983UL
 #define SPDK_PTL_PROVIDER_QP_MAGIC_NUMBER 19082018UL
@@ -182,8 +177,8 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		SPDK_PTL_CHECK_SRQ(portals_srq);
 		nic = ptl_cnxt_get_ni_handle(portals_srq->ptl_context);
 
-		if (wr->num_sge != SPDK_PTL_IOVEC_SIZE) {
-			SPDK_PTL_FATAL("IOVECTOR too small size is: %d needs %d", SPDK_PTL_IOVEC_SIZE, wr->num_sge);
+		if (wr->num_sge != PTL_IOVEC_SIZE) {
+			SPDK_PTL_FATAL("IOVECTOR too small size is: %d needs %d", PTL_IOVEC_SIZE, wr->num_sge);
 		}
 		// SPDK_PTL_DEBUG("Num of sges are %d", wr->num_sge);
 		for (int i = 0; i < wr->num_sge; i++) {
@@ -195,8 +190,8 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 
 		/*Initialize the list matching entry*/
 		memset(&le, 0, sizeof(ptl_le_t));
-		le.ignore_bits = SPDK_PTL_IGNORE;
-		le.match_bits = SPDK_PTL_MATCH;
+		le.ignore_bits = PTL_IGNORE;
+		le.match_bits = PTL_MATCH;
 		le.match_id.phys.nid = PTL_NID_ANY;
 		le.match_id.phys.pid = PTL_PID_ANY;
 		le.min_free = 0;
@@ -204,7 +199,7 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		le.length = wr->num_sge;
 		le.ct_handle = PTL_CT_NONE;
 		le.uid = PTL_UID_ANY;
-		le.options = SPDK_PTL_SRV_ME_OPTS | PTL_IOVEC;
+		le.options = PTL_SRV_ME_OPTS | PTL_IOVEC;
 		le_meta->wr_id = wr->wr_id;
 		// Append the memory entry
 		ret = PtlLEAppend(
@@ -291,8 +286,8 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		nic = ptl_cnxt_get_ni_handle(portals_qp->ptl_context);
 		pt_index = ptl_cnxt_get_portal_index(portals_qp->ptl_context);
 
-		if (wr->num_sge > SPDK_PTL_IOVEC_SIZE) {
-			SPDK_PTL_FATAL("io_vector too small size: %d needs %d", SPDK_PTL_IOVEC_SIZE, wr->num_sge);
+		if (wr->num_sge > PTL_IOVEC_SIZE) {
+			SPDK_PTL_FATAL("io_vector too small size: %d needs %d", PTL_IOVEC_SIZE, wr->num_sge);
 		}
 
 		SPDK_PTL_DEBUG("Num sges is %d", wr->num_sge);
@@ -305,8 +300,8 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		// Setup the list entry
 		// Initialize the matching entry
 		memset(&le, 0, sizeof(ptl_le_t));
-		le.ignore_bits = SPDK_PTL_IGNORE;
-		le.match_bits = SPDK_PTL_MATCH;
+		le.ignore_bits = PTL_IGNORE;
+		le.match_bits = PTL_MATCH;
 		le.match_id.phys.nid = PTL_NID_ANY;
 		le.match_id.phys.pid = PTL_PID_ANY;
 		le.min_free = 0;
@@ -314,7 +309,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		le.length = wr->num_sge;
 		le.ct_handle = PTL_CT_NONE;
 		le.uid = PTL_UID_ANY;
-		le.options = SPDK_PTL_SRV_ME_OPTS | PTL_IOVEC;
+		le.options = PTL_SRV_ME_OPTS | PTL_IOVEC;
 		le_meta->wr_id = wr->wr_id;
 
 		// Append the memory entry
@@ -412,8 +407,8 @@ spdk_rdma_provider_qp_accept(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 {
 	assert(spdk_rdma_qp != NULL);
 	assert(spdk_rdma_qp->cm_id != NULL);
-  struct ptl_cm_id *ptl_id = ptl_cm_id_get(spdk_rdma_qp->cm_id);
-  SPDK_PTL_DEBUG("At accept got a valid ptl_id queue pair id: %d",ptl_id->fake_cm_id.qp->qp_num);
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(spdk_rdma_qp->cm_id);
+	SPDK_PTL_DEBUG("At accept got a valid ptl_id queue pair id: %d", ptl_id->fake_cm_id.qp->qp_num);
 	return rdma_accept(spdk_rdma_qp->cm_id, conn_param);
 }
 
@@ -559,7 +554,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	spdk_rdma_qp->send_wrs.first = NULL;
 	spdk_rdma_qp->stats->send.doorbell_updates++;
-  sleep(10);
+	sleep(10);
 	return 0;
 
 }
