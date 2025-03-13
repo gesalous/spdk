@@ -1,17 +1,19 @@
 #ifndef PTL_CM_ID_H
 #define PTL_CM_ID_H
-#include "lib/rdma_provider/ptl_log.h"
-#include "lib/rdma_provider/ptl_context.h"
-#include "lib/rdma_provider/ptl_cq.h"
-#include "lib/rdma_provider/ptl_pd.h"
-#include "lib/rdma_provider/ptl_qp.h"
+#include "ptl_connection.h"
+#include "ptl_context.h"
+#include "ptl_cq.h"
+#include "ptl_log.h"
 #include "ptl_object_types.h"
+#include "ptl_pd.h"
+#include "ptl_qp.h"
 #include "spdk/util.h"
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
 #include <sys/socket.h>
 struct ptl_cm_id {
 	ptl_obj_type_e object_type;
+	struct ptl_conn_info conn_info;
 	struct rdma_cm_ptl_event_channel *ptl_channel;
 	struct sockaddr src_addr;
 	struct sockaddr dest_addr;
