@@ -26,6 +26,8 @@ struct ptl_context {
 	struct ibv_context fake_ibv_cnxt;
 	struct ibv_cq fake_cq;
 	struct spdk_rdma_provider_srq *srq;
+	int pid;
+	int nid;
 	bool initialized;
 };
 
@@ -37,5 +39,16 @@ struct ptl_context *ptl_cnxt_get_from_ibvpd(struct ibv_pd *ib_pd);
 
 ptl_pt_index_t ptl_cnxt_get_portal_index(struct ptl_context *cnxt);
 ptl_handle_ni_t ptl_cnxt_get_ni_handle(struct ptl_context *cnxt);
+
+static inline int ptl_cnxt_get_nid(struct ptl_context *cnxt)
+{
+	return cnxt->nid;
+}
+
+static inline int ptl_cnxt_get_pid(struct ptl_context *cnxt)
+{
+	return cnxt->pid;
+}
+
 #endif
 

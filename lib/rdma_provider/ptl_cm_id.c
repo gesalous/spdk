@@ -45,10 +45,10 @@ struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
 	/*rdma_cm library uses the private_data field to negotiate a new connection*/
 	fake_event->param.conn.private_data = private_data;
 	fake_event->param.conn.private_data_len = private_data_len;
-  fake_event->param.conn.initiator_depth = 32;
-  fake_event->param.conn.responder_resources = 0;
-  fake_event->param.conn.retry_count = 7;
-  fake_event->param.conn.rnr_retry_count = 7;
+	fake_event->param.conn.initiator_depth = 32;
+	fake_event->param.conn.responder_resources = 0;
+	fake_event->param.conn.retry_count = 7;
+	fake_event->param.conn.rnr_retry_count = 7;
 	return fake_event;
 }
 
@@ -61,11 +61,11 @@ void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
 		SPDK_PTL_FATAL("Failed to queue fake event");
 	}
 	SPDK_PTL_DEBUG(" ********* Added event of type: %d", event->event);
-  uint64_t result;
-    if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
-        perror("read");
-        SPDK_PTL_FATAL("Failed to write event");
-    }
+	uint64_t result;
+	if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
+		perror("read");
+		SPDK_PTL_FATAL("Failed to write event");
+	}
 	rdma_cm_ptl_event_channel_unlock_event_deque(ptl_id->ptl_channel);
 }
 

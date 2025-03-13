@@ -1,18 +1,21 @@
 #include "deque.h"
-#include "lib/rdma_provider/dlist.h"
-#include "lib/rdma_provider/ptl_cq.h"
-#include "ptl_log.h"
+#include "dlist.h"
 #include "ptl_cm_id.h"
+#include "ptl_config.h"
+#include "ptl_connection.h"
 #include "ptl_context.h"
+#include "ptl_cq.h"
+#include "ptl_log.h"
+#include "ptl_macros.h"
 #include "ptl_pd.h"
 #include "ptl_qp.h"
 #include "rdma_cm_ptl_event_channel.h"
 #include "spdk/util.h"
-#include "ptl_macros.h"
 #include <asm-generic/errno-base.h>
 #include <dlfcn.h>
 #include <infiniband/verbs.h>
 #include <portals4.h>
+#include <pthread.h>
 #include <rdma/rdma_cma.h>
 #include <semaphore.h>
 #include <spdk/nvmf_spec.h>
@@ -21,8 +24,6 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
-
-
 /**
  * Used for faking connection setup
  */
@@ -34,11 +35,166 @@ static struct spdk_nvmf_rdma_request_private_data private_data = {
 };
 
 
+static struct rdma_ptl_control_plane_server {
+	struct ptl_conn_info *conn_info;
+	ptl_handle_le_t *le_handle;
+	uint32_t num_conn_info;
+	ptl_handle_eq_t eq_handle;
+	ptl_pt_index_t pt_index;
+	pthread_t contol_plane_server_cnxt;
+} ptl_control_plane_server;
+
+/**
+ * @brief Control plane server function that handles incoming Portals events
+ *
+ * This function implements the main event loop for the RDMA/Portals control
+ * plane server. Its purpose it listen for new connection requests in order to
+ * create a map from queue pair number to a (pid, nid) pair. This is needed to
+ * be comIt continuously polls the event queue for incoming messages, processes
+ * PUT operations, and manages the recycling of receive buffers through list
+ * entries.
+ *
+ * The function performs the following operations:
+ * - Waits for events using PtlEQWait()
+ * - Validates that received events are PUT operations
+ * - Logs information about the initiator (NID and PID)
+ * - Re-registers receive buffers by creating new list entries
+ *
+ * @param args Pointer to function arguments (unused in current implementation)
+ * @return void* Returns NULL (thread function requirement)
+ *
+ * @note This function runs in an infinite loop and should be launched as a
+ * separate thread
+ * @warning Function will terminate with SPDK_PTL_FATAL if non-PUT events are
+ * received or if any Portals operations fail
+ */
+static void *rdma_ptl_control_plane_server(void *args)
+{
+	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
+	ptl_event_t event;
+	int rc;
+	SPDK_PTL_DEBUG("Control plane server started, waiting for new connections");
+	while (1) {
+		/* Wait for events on the control plane event queue */
+		rc = PtlEQWait(ptl_control_plane_server.eq_handle, &event);
+		if (rc != PTL_OK) {
+			SPDK_PTL_FATAL(
+				"PtlEQWait failed in control plane server with code: %d\n", rc);
+		}
+
+		/* Verify that the event is a PUT operation */
+		if (event.type != PTL_EVENT_PUT) {
+			SPDK_PTL_FATAL(
+				"Unexpected event type received in control plane server: %d\n",
+				event.type);
+		}
+
+		/* Print information about the received event */
+		SPDK_PTL_DEBUG(
+			"Received control plane message from NID: %d, PID: %d\n",
+			event.initiator.phys.nid, event.initiator.phys.pid);
+
+		/* Re-register the receive buffer by appending a new list entry */
+		ptl_le_t le;
+		memset(&le, 0, sizeof(ptl_le_t));
+		le.ignore_bits = PTL_IGNORE;
+		le.match_bits = PTL_MATCH;
+		le.match_id.phys.nid = PTL_NID_ANY;
+		le.match_id.phys.pid = PTL_PID_ANY;
+		le.min_free = 0;
+		le.start = event.start;
+		le.length = sizeof(struct ptl_conn_info);
+		le.ct_handle = PTL_CT_NONE;
+		le.uid = PTL_UID_ANY;
+		le.options = PTL_SRV_ME_OPTS;
+
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_SERVER_MAILBOX, &le,
+				 PTL_PRIORITY_LIST, event.user_ptr, event.user_ptr);
+		if (rc != PTL_OK) {
+			SPDK_PTL_FATAL(
+				"PtlLEAppend failed in control plane server with code: %d\n",
+				rc);
+		}
+		SPDK_PTL_DEBUG("Reregistered control plane buffer");
+	}
+	return NULL;
+}
+
+/**
+ * @brief Called from rdma_listen to setup a new Event Queue for Portal Index
+ * PTL_CONTROL_PLANE_PT_INDEX. When client calls rdma_connect they send a
+ * message to this EQ to introduce themselves and enable server to build a map
+ * containing the queue pair num to nid,pid as required by the Portals API.
+ * static void rdma_ptl_control_eq(void) {}
+ **/
+static void rdma_ptl_boot_control_plane_server(void)
+{
+	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
+	ptl_le_t le;
+	int rc;
+
+	ptl_control_plane_server.num_conn_info = PTL_CONTROL_PLANE_NUM_RECV_BUFFERS;
+	rc = posix_memalign((void **)&ptl_control_plane_server.conn_info, 4096,
+			    PTL_CONTROL_PLANE_NUM_RECV_BUFFERS * sizeof(struct ptl_conn_info));
+	if (rc != 0) {
+		perror("Reason of posix_memalign failure:");
+		SPDK_PTL_FATAL("posix_memalign failed: %d", rc);
+	}
+	memset(ptl_control_plane_server.conn_info, 0x00,
+	       ptl_control_plane_server.num_conn_info * sizeof(struct ptl_conn_info));
+
+	ptl_control_plane_server.le_handle = calloc(ptl_control_plane_server.num_conn_info,
+					     sizeof(ptl_handle_le_t));
+	/*Create event queue for control plane messages*/
+	rc = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_NUM_RECV_BUFFERS,
+			&ptl_control_plane_server.eq_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlEQAlloc for the control plane failed with code: %d\n", rc);
+	}
+	/*Bind it to the portal index*/
+	rc = PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), 0, ptl_control_plane_server.eq_handle,
+			PTL_CONTROL_PLANE_SERVER_MAILBOX, &ptl_control_plane_server.pt_index);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("Error allocating portal for connection server %d reason: %d",
+			       PTL_CONTROL_PLANE_SERVER_MAILBOX, rc);
+	}
+
+	for (uint32_t i = 0; i < ptl_control_plane_server.num_conn_info; i++) {
+
+		memset(&le, 0, sizeof(ptl_le_t));
+		le.ignore_bits = PTL_IGNORE;
+		le.match_bits = PTL_MATCH;
+		le.match_id.phys.nid = PTL_NID_ANY;
+		le.match_id.phys.pid = PTL_PID_ANY;
+		le.min_free = 0;
+		le.start = &ptl_control_plane_server.conn_info[i];
+		le.length = sizeof(struct ptl_conn_info);
+		le.ct_handle = PTL_CT_NONE;
+		le.uid = PTL_UID_ANY;
+		le.options = PTL_SRV_ME_OPTS;
+
+		// Append LE for receiving control messages
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_SERVER_MAILBOX, &le,
+				 PTL_PRIORITY_LIST, &ptl_control_plane_server.le_handle[i], &ptl_control_plane_server.le_handle[i]);
+		if (rc != PTL_OK) {
+			SPDK_PTL_FATAL("PtlLEAppend failed in control plane server with code: %d\n", rc);
+		}
+		SPDK_PTL_DEBUG("Successfully registered recv bufer no: %d for control plane server", i);
+	}
+	SPDK_PTL_DEBUG("Booting control plane server");
+	if (pthread_create(&ptl_control_plane_server.contol_plane_server_cnxt, NULL,
+			   rdma_ptl_control_plane_server, NULL)) {
+		perror("Reason of failure of booting control plane server:");
+		SPDK_PTL_FATAL("Failed to boot control plane server");
+	}
+}
+
 struct rdma_event_channel *
 rdma_create_event_channel(void)
 {
 	SPDK_PTL_DEBUG("RDMACM: Intercepted rdma_create_event_channel()");
-	struct rdma_cm_ptl_event_channel *ptl_channel = calloc(1UL, sizeof(*ptl_channel));
+	struct rdma_cm_ptl_event_channel *ptl_channel = calloc(1UL,
+		sizeof(*ptl_channel));
 	if (!ptl_channel) {
 		SPDK_PTL_DEBUG("RDMACM: Allocation of memory failed");
 		return NULL;
@@ -202,6 +358,8 @@ int rdma_listen(struct rdma_cm_id *id, int backlog)
 
 	struct ptl_cm_id * ptl_id = ptl_cm_id_get(id);
 	struct rdma_cm_event *fake_event;
+	rdma_ptl_boot_control_plane_server();
+
 	SPDK_PTL_DEBUG("RDMA_LISTEN(): Create a fake connection event to establish queue pair no 1");
 	fake_event = ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_REQUEST, &private_data,
 					    sizeof(private_data));
@@ -241,12 +399,12 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 
 	if (fake_event) {
 		SPDK_PTL_DEBUG(" -------> OK got event!");
-    /* Clean the event*/
-    uint64_t result;
-    if (read(channel->fd, &result, sizeof(result)) != sizeof(result)) {
-        perror("read");
-        SPDK_PTL_DEBUG("Failed to clean the event, go on");
-    }
+		/* Clean the event*/
+		uint64_t result;
+		if (read(channel->fd, &result, sizeof(result)) != sizeof(result)) {
+			perror("read");
+			SPDK_PTL_DEBUG("Failed to clean the event, go on");
+		}
 		return 0;
 	}
 	SPDK_PTL_DEBUG("Got nothing shit EAGAIN!");
@@ -392,23 +550,256 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 	ptl_cm_id_set_recv_queue(ptl_id, recv_queue);
 
 	SPDK_PTL_DEBUG("Successfully created Portals Queue Pair Object and updated Portal CM ID and Queue Pair pointers");
-  raise(SIGINT);
+	raise(SIGINT);
 	return 0;
 }
 
+
+/**
+ * @brief Extracts the target process ID from the last digit of an RDMA connection's IP address
+ *
+ * This function examines the destination IP address of an RDMA connection and returns
+ * its last digit, which is used as the target process ID. The function supports both
+ * IPv4 and IPv6 addresses.
+ *
+ * @param id Pointer to an RDMA connection identifier structure (rdma_cm_id).
+ *           Must not be NULL and must have a valid destination address set.
+ *
+ * @return The last digit found in the IP address, to be used as the target process ID
+ *
+ * @throws SPDK_PTL_FATAL in the following cases:
+ *         - If the input rdma_cm_id pointer is NULL
+ *         - If IPv4/IPv6 address conversion fails
+ *         - If the address family is unsupported (neither IPv4 nor IPv6)
+ *         - If no digits are found in the IP address
+ *
+ * @note The function assumes that the last digit of the IP address corresponds
+ *       to a valid process ID in the target system.
+ *
+ * Example usage:
+ * @code
+ *     struct rdma_cm_id *id = get_rdma_connection();
+ *     int target_pid = rdma_ptl_find_target_pid(id);
+ *     // target_pid now contains the last digit of the IP address
+ * @endcode
+ */
+static int rdma_ptl_find_target_nid(struct rdma_cm_id *id)
+{
+	char ip[INET6_ADDRSTRLEN] = {0};
+	struct sockaddr_in *sin = NULL;
+	struct sockaddr_in6 *sin6 = NULL;
+	int last_digit;
+	if (NULL == id) {
+		SPDK_PTL_FATAL("Invalid RDMA connection ID");
+	}
+
+	switch (id->route.addr.dst_addr.sa_family) {
+	case AF_INET:
+		sin = (struct sockaddr_in *)&id->route.addr.dst_addr;
+		if (!inet_ntop(AF_INET, &sin->sin_addr, ip, sizeof(ip))) {
+			SPDK_PTL_FATAL("IPv4 conversion failed");
+		}
+		break;
+
+	case AF_INET6:
+		sin6 = (struct sockaddr_in6 *)&id->route.addr.dst_sin6;
+		if (!inet_ntop(AF_INET6, &sin6->sin6_addr, ip, sizeof(ip))) {
+			SPDK_PTL_FATAL("IPv6 conversion failed");
+		}
+		break;
+
+	default:
+		SPDK_PTL_FATAL("Unsupported address family");
+	}
+
+	/* Find the last digit in the IP address */
+	size_t len = strlen(ip);
+	for (int i = len - 1; i >= 0; i--) {
+		if (isdigit(ip[i])) {
+			last_digit = ip[i] - '0';
+			SPDK_PTL_DEBUG("PID of target is %d", last_digit);
+			return last_digit;
+		}
+	}
+
+	SPDK_PTL_FATAL("Invalid IP address format");
+}
+
+static int rdma_ptl_find_target_pid(struct rdma_cm_id *id)
+{
+	if (!id || !id->route.addr.dst_addr.sa_family) {
+		SPDK_PTL_FATAL("Invalid RDMA connection ID or destination address");
+	}
+
+	int port = -1;
+
+	switch (id->route.addr.dst_addr.sa_family) {
+	case AF_INET: {
+		struct sockaddr_in *sin = (struct sockaddr_in *)&id->route.addr.dst_addr;
+		port = ntohs(sin->sin_port); // Convert port from network to host byte order
+		break;
+	}
+	case AF_INET6: {
+		struct sockaddr_in6 *sin6 = (struct sockaddr_in6 *)&id->route.addr.dst_addr;
+		port = ntohs(sin6->sin6_port); // Convert port from network to host byte order
+		break;
+	}
+	default:
+		SPDK_PTL_FATAL("Unsupported address family");
+		return -1;
+	}
+	SPDK_PTL_DEBUG("Target's port is %d", port);
+	return port;
+}
+
+
+/**
+ * @brief Establish RDMA connection using Portals PUT operation
+ *
+ * This function implements the client-side connection establishment by:
+ * - Preparing connection information (PID, NID, etc.)
+ * - Sending this information to the server using PtlPut
+ * - Creating a fake RDMA connection event for compatibility
+ *
+ * @param id RDMA communication identifier
+ * @param conn_param Connection parameters including private data
+ * @return 0 on success, negative value on failure
+ */
 int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 {
 	struct rdma_cm_event *fake_event;
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
-	//original
-	// ptl_cm_id_set_fake_data(ptl_id, conn_param->private_data);
-	// ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE);
+	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
+	struct ptl_conn_info  * ptl_conn_request = NULL;
+	struct ptl_conn_info_reply  * ptl_conn_reply = NULL;
+	ptl_handle_le_t reply;
+	ptl_process_t target;
+	ptl_md_t md;
+	ptl_handle_md_t md_handle;
+	ptl_ct_event_t ct_event = {0};
+	ptl_event_t event;
+	ptl_handle_eq_t initiator_event_queue;
+	ptl_le_t le;
+	int rc;
+
+	if (posix_memalign((void **)&ptl_conn_request, 4096, sizeof(*ptl_conn_request))) {
+		SPDK_PTL_FATAL("Failed to allocate ptl_conn_request");
+	}
+	ptl_conn_request->version = PTL_SPDK_PROTOCOL_VERSION;
+	ptl_conn_request->initiator_nid = ptl_cnxt_get_nid(ptl_cnxt);
+	ptl_conn_request->initiator_pid = ptl_cnxt_get_pid(ptl_cnxt);
+
+	/* Setup target process identifier */
+	ptl_conn_request->target_nid = rdma_ptl_find_target_nid(id);
+	ptl_conn_request->target_pid = rdma_ptl_find_target_pid(id);
+	target.phys.nid = ptl_conn_request->target_nid;
+	target.phys.pid = ptl_conn_request->target_pid;
+
+
+
+	if (posix_memalign((void **)&ptl_conn_reply, 4096, sizeof(*ptl_conn_reply))) {
+		SPDK_PTL_FATAL("Failed to allocate ptl_conn_reply");
+	}
+
+	/*Prepare to receive the reply from the target*/
+	rc = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), 1, &initiator_event_queue);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlEQAlloc for receiving target reply failed with code: %d", rc);
+	}
+
+	/* Create and post LE for receiving reply */
+	memset(&le, 0, sizeof(ptl_le_t));
+	le.start = ptl_conn_reply;
+	le.length = sizeof(*ptl_conn_reply);
+	le.ct_handle = PTL_CT_NONE;
+	le.uid = PTL_UID_ANY;
+	le.options = PTL_SRV_ME_OPTS;
+
+	rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_CLIENT_MAILBOX, &le,
+			 PTL_PRIORITY_LIST, NULL, &reply);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlLEAppend failed with code: %d\n", rc);
+	}
+
+
+	/* Create memory descriptor for the connection info */
+	memset(&md, 0, sizeof(ptl_md_t));
+	md.start = ptl_conn_request;
+	md.length = sizeof(*ptl_conn_request);
+	md.options = PTL_SRV_ME_OPTS;
+	md.eq_handle = PTL_EQ_NONE;
+	md.ct_handle = PTL_CT_NONE;
+
+	rc = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_cnxt), &md, &md_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlMDBind failed with code: %d\n", rc);
+	}
+
+	/* Send connection info to server using PtlPut */
+	rc = PtlPut(md_handle,                    /* MD handle */
+		    0,                            /* local offset */
+		    sizeof(*ptl_conn_request),            /* length */
+		    PTL_ACK_REQ,                 /* acknowledgment requested */
+		    target,                      /* target process */
+		    PTL_CONTROL_PLANE_SERVER_MAILBOX,  /* portal table index */
+		    PTL_MATCH,                   /* match bits */
+		    0,                           /* remote offset */
+		    NULL,                        /* user ptr */
+		    0);                          /* handle */
+
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlPut failed with code: %d\n", rc);
+	}
+
+	SPDK_PTL_DEBUG("Send connection request to target NID: %d PID: %d, waiting for completion...",
+		       target.phys.nid, target.phys.pid);
+	/* Wait for PUT completion */
+	rc = PtlCTWait(md.ct_handle, 1, &ct_event);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlCTWait failed with code: %d", rc);
+	}
+
+	SPDK_PTL_DEBUG("Send connection request to target NID: %d PID: %d, DONE! Waiting for reply...",
+		       target.phys.nid, target.phys.pid);
+	/* Wait for reply */
+	rc = PtlEQWait(initiator_event_queue, &event);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("PtlEQWait failed with code: %d", rc);
+	}
+	SPDK_PTL_DEBUG("Got connection reply from target NID: %d PID: %d", target.phys.nid,
+		       target.phys.pid);
+
+	memcpy(&ptl_id->conn_info, ptl_conn_request, sizeof(*ptl_conn_request));
+	/* Clean up MD */
+	PtlMDRelease(md_handle);
+	PtlLEUnlink(reply);
+	PtlEQFree(initiator_event_queue);
+	free(ptl_conn_request);
+	free(ptl_conn_reply);
+
+	/* Create fake RDMA event for compatibility */
 	fake_event = ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE,
-					    conn_param->private_data, conn_param->private_data_len);
+					    conn_param->private_data,
+					    conn_param->private_data_len);
 	ptl_cm_id_add_event(ptl_id, fake_event);
-	SPDK_PTL_DEBUG("FAKED successfull connection");
+
+
 	return 0;
 }
+
+// int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
+// {
+// 	struct rdma_cm_event *fake_event;
+// 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
+// 	//original
+// 	// ptl_cm_id_set_fake_data(ptl_id, conn_param->private_data);
+// 	// ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE);
+// 	fake_event = ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE,
+// 					    conn_param->private_data, conn_param->private_data_len);
+// 	ptl_cm_id_add_event(ptl_id, fake_event);
+// 	SPDK_PTL_DEBUG("FAKED successfull connection");
+// 	return 0;
+// }
 
 int rdma_set_option(struct rdma_cm_id *id, int level, int optname, void *optval,
 		    size_t optlen)
@@ -422,3 +813,4 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	SPDK_PTL_DEBUG("RDMA accept fake it until you make it");
 	return 0;
 }
+
