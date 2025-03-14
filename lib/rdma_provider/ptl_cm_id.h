@@ -15,8 +15,9 @@ struct ptl_cm_id {
 	ptl_obj_type_e object_type;
 	struct ptl_conn_info conn_info;
 	struct rdma_cm_ptl_event_channel *ptl_channel;
-	struct sockaddr src_addr;
-	struct sockaddr dest_addr;
+	//This info is already kept in fake_cm_id set up during rdma_resolve().
+	// struct sockaddr src_addr;
+	// struct sockaddr dest_addr;
 	struct rdma_cm_id fake_cm_id;
 	/*As in verbs, each ptl_cm_id associates with a single ptl_pd*/
 	struct ptl_pd *ptl_pd;
@@ -50,11 +51,11 @@ struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
 void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
 			 struct rdma_cm_event *event);
 
-static inline struct sockaddr *
-rdma_cm_ptl_id_get_src_addr(struct ptl_cm_id *ptl_id)
-{
-	return &ptl_id->src_addr;
-}
+// static inline struct sockaddr *
+// rdma_cm_ptl_id_get_src_addr(struct ptl_cm_id *ptl_id)
+// {
+// 	return &ptl_id->src_addr;
+// }
 
 void ptl_cm_id_set_fake_data(struct ptl_cm_id *ptl_id, const void *fake_data);
 
