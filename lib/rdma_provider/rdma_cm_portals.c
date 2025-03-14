@@ -356,24 +356,24 @@ int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr)
 int rdma_listen(struct rdma_cm_id *id, int backlog)
 {
 
-	struct ptl_cm_id * ptl_id = ptl_cm_id_get(id);
-	struct rdma_cm_event *fake_event;
+	// struct ptl_cm_id * ptl_id = ptl_cm_id_get(id);
+	// struct rdma_cm_event *fake_event;
 	rdma_ptl_boot_control_plane_server();
 
-	SPDK_PTL_DEBUG("RDMA_LISTEN(): Create a fake connection event to establish queue pair no 1");
-	fake_event = ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_REQUEST, &private_data,
-					    sizeof(private_data));
+	// SPDK_PTL_DEBUG("RDMA_LISTEN(): Create a fake connection event to establish queue pair no 1");
+	// fake_event = ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_REQUEST, &private_data,
+	// 				    sizeof(private_data));
 
-	/*Fill up fake data about the origin of the guy that wants a new connection*/
-	fake_event->listen_id = id;
+	// /*Fill up fake data about the origin of the guy that wants a new connection*/
+	// fake_event->listen_id = id;
 
-	ptl_cm_id_add_event(ptl_id, fake_event);
-	SPDK_PTL_DEBUG("RDMA_LISTEN(): Ok created the fake RDMA_CM_EVENT_CONNECT_REQUEST triggering it through channel's async fd");
-	uint64_t value = 1;
-	if (write(ptl_id->ptl_channel->fake_channel.fd, &value, sizeof(value)) != sizeof(value)) {
-		perror("write to eventfd, reason:");
-		SPDK_PTL_FATAL("Failed to write eventfd");
-	}
+	// ptl_cm_id_add_event(ptl_id, fake_event);
+	// SPDK_PTL_DEBUG("RDMA_LISTEN(): Ok created the fake RDMA_CM_EVENT_CONNECT_REQUEST triggering it through channel's async fd");
+	// uint64_t value = 1;
+	// if (write(ptl_id->ptl_channel->fake_channel.fd, &value, sizeof(value)) != sizeof(value)) {
+	// 	perror("write to eventfd, reason:");
+	// 	SPDK_PTL_FATAL("Failed to write eventfd");
+	// }
 	return 0;
 }
 
@@ -550,7 +550,6 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 	ptl_cm_id_set_recv_queue(ptl_id, recv_queue);
 
 	SPDK_PTL_DEBUG("Successfully created Portals Queue Pair Object and updated Portal CM ID and Queue Pair pointers");
-	raise(SIGINT);
 	return 0;
 }
 
@@ -609,7 +608,7 @@ static int rdma_ptl_find_target_nid(struct rdma_cm_id *id)
 		break;
 
 	default:
-		SPDK_PTL_FATAL("Unsupported address family");
+		SPDK_PTL_FATAL("Unsupported address family: %d", id->route.addr.dst_addr.sa_family);
 	}
 
 	/* Find the last digit in the IP address */
@@ -701,12 +700,13 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 		SPDK_PTL_FATAL("Failed to allocate ptl_conn_reply");
 	}
 
+	SPDK_PTL_DEBUG("Creating event queue to receive reply from the target regarding the connection request");
 	/*Prepare to receive the reply from the target*/
 	rc = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), 1, &initiator_event_queue);
 	if (rc != PTL_OK) {
 		SPDK_PTL_FATAL("PtlEQAlloc for receiving target reply failed with code: %d", rc);
 	}
-
+	SPDK_PTL_DEBUG("Event queue done. Posting the receive buffer as a list entry...");
 	/* Create and post LE for receiving reply */
 	memset(&le, 0, sizeof(ptl_le_t));
 	le.start = ptl_conn_reply;
@@ -721,6 +721,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 		SPDK_PTL_FATAL("PtlLEAppend failed with code: %d\n", rc);
 	}
 
+	SPDK_PTL_DEBUG("Posted receive buffer Successfully, creating an MD descriptor for the buffer of the conn request");
 
 	/* Create memory descriptor for the connection info */
 	memset(&md, 0, sizeof(ptl_md_t));
@@ -735,6 +736,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 		SPDK_PTL_FATAL("PtlMDBind failed with code: %d\n", rc);
 	}
 
+	SPDK_PTL_DEBUG("MD of the request done. Performing the actual PtlPut");
 	/* Send connection info to server using PtlPut */
 	rc = PtlPut(md_handle,                    /* MD handle */
 		    0,                            /* local offset */
