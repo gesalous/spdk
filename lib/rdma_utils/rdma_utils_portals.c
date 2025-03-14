@@ -103,8 +103,8 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 {
 	SPDK_PTL_DEBUG("RDMAUTILSPTL: Registering memory vaddr is: %p size is: %lu action is: %d", vaddr,
 		       size, action);
-  struct ptl_pd *ptl_pd;
-  struct ptl_cq *ptl_cq;
+	struct ptl_pd *ptl_pd;
+	struct ptl_cq *ptl_cq;
 	struct spdk_rdma_utils_mem_map *rmap = cb_ctx;
 	struct ibv_pd *pd = rmap->pd;
 	struct ibv_mr *mr;
@@ -113,9 +113,9 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	int rc;
 	int ret;
 
-  
-  ptl_pd = ptl_pd_get_from_ibv_pd(pd);
-  ptl_cq = ptl_cq_get_instance(NULL);
+
+	ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+	ptl_cq = ptl_cq_get_instance(NULL);
 
 
 	if (rmap->hooks && (rmap->hooks->put_rkey || rmap->hooks->get_rkey ||
@@ -146,10 +146,10 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		mem_descriptor.start = vaddr;
 		mem_descriptor.length = size;
 		mem_descriptor.eq_handle = ptl_cq_get_queue(ptl_cq);
-    rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor.ct_handle);
-    if (PTL_OK != rc) {
-      SPDK_PTL_FATAL("Failed to allocate a counting event");
-    }
+		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor.ct_handle);
+		if (PTL_OK != rc) {
+			SPDK_PTL_FATAL("Failed to allocate a counting event");
+		}
 		ptl_handle_md_t mem_handle;
 
 		ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor,
@@ -224,7 +224,7 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 	SPDK_PTL_DEBUG("RDMAPTLUTILS: hooks are NULL? %s", hooks ? "NO" : "YES");
 
 	struct spdk_rdma_utils_mem_map *map;
-  struct ptl_pd *ptl_pd;
+	struct ptl_pd *ptl_pd;
 
 	/*No IWARP support this is PORTALS*/
 	// if (pd->context->device->transport_type == IBV_TRANSPORT_IWARP) {
@@ -274,9 +274,9 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 
 	pthread_mutex_unlock(&g_rdma_mr_maps_mutex);
 	SPDK_PTL_DEBUG("Ok created mem_map updated field for PORTALS PD (struct ptl_pd)");
-  /*We want to update our ptl_pd object with which mem_map it relates to*/
-  ptl_pd = ptl_pd_get_from_ibv_pd(pd);
-  ptl_pd_set_mem_map(ptl_pd, map);
+	/*We want to update our ptl_pd object with which mem_map it relates to*/
+	ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+	ptl_pd_set_mem_map(ptl_pd, map);
 	return map;
 }
 
@@ -494,12 +494,12 @@ exit:
 struct ibv_pd *
 spdk_rdma_utils_get_pd(struct ibv_context *context)
 {
-  struct ptl_context * ptl_context = ptl_cnxt_get_from_ibcnxt(context);
-  if(NULL == ptl_context->ptl_pd){
-	  SPDK_PTL_DEBUG("PTL PD IS NULLQ creating it");
-    ptl_context->ptl_pd = ptl_pd_create(ptl_context);
-  }
-  return ptl_pd_get_ibv_pd(ptl_context->ptl_pd);
+	struct ptl_context * ptl_context = ptl_cnxt_get_from_ibcnxt(context);
+	if (NULL == ptl_context->ptl_pd) {
+		SPDK_PTL_DEBUG("PTL PD IS NULLQ creating it");
+		ptl_context->ptl_pd = ptl_pd_create(ptl_context);
+	}
+	return ptl_pd_get_ibv_pd(ptl_context->ptl_pd);
 	// struct ptl_context *ptl_context;
 	// struct ibv_pd *fake_pd;
 	// pthread_mutex_lock(&g_dev_mutex);
@@ -649,7 +649,7 @@ spdk_rdma_cm_id_get_numa_id(struct rdma_cm_id *cm_id)
 	//original
 	// sa = rdma_get_local_addr(cm_id);
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(cm_id);
-	sa = rdma_cm_ptl_id_get_src_addr(ptl_id);
+	sa = &ptl_id->fake_cm_id.route.addr.src_addr;
 	if (sa == NULL) {
 		return SPDK_ENV_NUMA_ID_ANY;
 	}
