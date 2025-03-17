@@ -1,6 +1,8 @@
 #ifndef PTL_CONFIG_H
 #define PTL_CONFIG_H
 
+#define PTL_TARGET_PID 16
+
 #define PTL_SPDK_PROTOCOL_VERSION 1UL
 /**
   * Portal index number where the actual nvme commands and data are transfered
@@ -13,9 +15,9 @@
  * table from queue pair id to nid,pid that Portals uses for point to point
  * communication.
  */
-#define PTL_CONTROL_PLANE_SERVER_MAILBOX 1
+#define PTL_CONTROL_PLANE_TARGET_MAILBOX 1
 
-#define PTL_CONTROL_PLANE_CLIENT_MAILBOX 2
+#define PTL_CONTROL_PLANE_INITIATOR_MAILBOX 2
 /**
  * Number of recv buffers posted through PtlLEAppend for receiving new
  *connection info from clients.
