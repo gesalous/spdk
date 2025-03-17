@@ -49,44 +49,46 @@ static int rdma_ptl_add_in_connection_map(void)
 	return 0;
 }
 
-static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id, struct ptl_conn_info *conn_info,
+static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id,
+		struct ptl_conn_info *conn_info,
 		struct ptl_conn_info_reply *reply)
 {
-  assert(listen_id);
-  assert(conn_info);
-  assert(reply);
+	assert(listen_id);
+	assert(conn_info);
+	assert(reply);
 	struct rdma_cm_event *fake_event = {0};
-  struct ptl_cm_id *ptl_id;
-  struct ptl_context *ptl_cnxt = ptl_cnxt_get();
-  struct ptl_cq *ptl_cq = ptl_cq_get_instance(NULL);
-  struct ptl_qp *ptl_qp;
+	struct ptl_cm_id *ptl_id;
+	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
+	struct ptl_cq *ptl_cq = ptl_cq_get_instance(NULL);
+	struct ptl_qp *ptl_qp;
 	/*first fill the reply parts*/
 	reply->version = PTL_SPDK_PROTOCOL_VERSION;
 	reply->status = PTL_OK;
 	SPDK_PTL_DEBUG("RDMA_LISTEN(): Create a fake connection event to establish queue pair");
-	fake_event = ptl_cm_id_create_event(listen_id, &listen_id->fake_cm_id, RDMA_CM_EVENT_CONNECT_REQUEST,
+	fake_event = ptl_cm_id_create_event(listen_id, &listen_id->fake_cm_id,
+					    RDMA_CM_EVENT_CONNECT_REQUEST,
 					    &private_data,
 					    sizeof(private_data));
 
 	/*Fill up fake data about the origin of the guy that wants a new connection*/
 	fake_event->listen_id = &listen_id->fake_cm_id;
-  ptl_id = ptl_cm_id_create(NULL, NULL);
+	ptl_id = ptl_cm_id_create(NULL, NULL);
 
-  ptl_qp = ptl_qp_create(ptl_cnxt->ptl_pd, ptl_cq, ptl_cq);
-  ptl_id->fake_cm_id.qp = &ptl_qp->fake_qp;
-  ptl_id->fake_cm_id.qp->qp_num = rdma_ptl_add_in_connection_map();
-  fake_event->id = &ptl_id->fake_cm_id;
-  ptl_cm_id_add_event(listen_id, fake_event);
-  assert(ptl_id->ptl_channel);
+	ptl_qp = ptl_qp_create(ptl_cnxt->ptl_pd, ptl_cq, ptl_cq);
+	ptl_id->fake_cm_id.qp = &ptl_qp->fake_qp;
+	ptl_id->fake_cm_id.qp->qp_num = rdma_ptl_add_in_connection_map();
+	fake_event->id = &ptl_id->fake_cm_id;
+	ptl_cm_id_add_event(listen_id, fake_event);
+	assert(ptl_id->ptl_channel);
 
-  SPDK_PTL_DEBUG("Ok created the fake RDMA_CM_EVENT_CONNECT_REQUEST triggering "
-                 "it through channel's async fd. QP num is: %d",
-                 fake_event->id->qp->qp_num);
-  uint64_t value = 1;
-  if (write(listen_id->ptl_channel->fake_channel.fd, &value, sizeof(value)) !=
-      sizeof(value)) {
-    perror("write to eventfd, reason:");
-    SPDK_PTL_FATAL("Failed to write eventfd");
+	SPDK_PTL_DEBUG("Ok created the fake RDMA_CM_EVENT_CONNECT_REQUEST triggering "
+		       "it through channel's async fd. QP num is: %d",
+		       fake_event->id->qp->qp_num);
+	uint64_t value = 1;
+	if (write(listen_id->ptl_channel->fake_channel.fd, &value, sizeof(value)) !=
+	    sizeof(value)) {
+		perror("write to eventfd, reason:");
+		SPDK_PTL_FATAL("Failed to write eventfd");
 	}
 }
 
@@ -116,13 +118,36 @@ static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id, struct pt
  */
 static void *rdma_ptl_cp_server(void *args)
 {
-  assert(args);
-  struct ptl_cm_id *listen_id = args;
-  struct ptl_conn_info_reply conn_info_reply;
+	assert(args);
+	struct ptl_cm_id *listen_id = args;
+	struct ptl_conn_info * conn_info;
+	struct ptl_conn_info_reply * conn_info_reply;
 	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
 	ptl_event_t event;
+	ptl_md_t memory_desc;
+	ptl_handle_md_t memory_desc_handle;
+	ptl_process_t initiator;
 	int rc;
-	SPDK_PTL_DEBUG("Control plane server started, waiting for new connections");
+
+	if (posix_memalign((void **)&conn_info_reply, 4096, sizeof(*conn_info_reply))) {
+		SPDK_PTL_FATAL("Failed to allocate memory");
+	}
+
+	/* Create memory descriptor for the connection info */
+	memset(&memory_desc, 0, sizeof(ptl_md_t));
+	memory_desc.start = conn_info_reply;
+	memory_desc.length = sizeof(*conn_info_reply);
+	memory_desc.options = 0;
+	memory_desc.eq_handle = ptl_control_plane_server.eq_handle;
+	memory_desc.ct_handle = PTL_CT_NONE;
+
+	assert(ptl_cnxt->initialized);
+	rc = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_cnxt), &memory_desc, &memory_desc_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("[TARGET] PtlMDBind failed with code: %d\n", rc);
+	}
+
+	SPDK_PTL_DEBUG("[TARGET] Control plane server started, waiting for new connections");
 	while (1) {
 		/* Wait for events on the control plane event queue */
 		rc = PtlEQWait(ptl_control_plane_server.eq_handle, &event);
@@ -132,7 +157,16 @@ static void *rdma_ptl_cp_server(void *args)
 		}
 
 		if (event.type == PTL_EVENT_AUTO_UNLINK) {
-			SPDK_PTL_DEBUG("Got an autounlink event continue...");
+			SPDK_PTL_DEBUG("[TARGET] Got an autounlink event continue...");
+			continue;
+		}
+		if (event.type == PTL_EVENT_SEND) {
+			SPDK_PTL_DEBUG("[TARGET] Conn reply sent to client ok continue...");
+			continue;
+		}
+
+		if (event.type == PTL_EVENT_ACK) {
+			SPDK_PTL_DEBUG("[TARGET] Conn reply arrived to client ok continue...");
 			continue;
 		}
 
@@ -144,12 +178,29 @@ static void *rdma_ptl_cp_server(void *args)
 		}
 
 		/* Print information about the received event */
-		SPDK_PTL_DEBUG(
-			"Received control plane message from NID: %d, PID: %d\n",
-			event.initiator.phys.nid, event.initiator.phys.pid);
-    assert(event.start);
-    rdma_ptl_process_conn_request(listen_id, (struct ptl_conn_info *)event.start, &conn_info_reply);
+		SPDK_PTL_DEBUG("[TARGET] Received control plane message from NID: %d, PID: %d\n",
+			       event.initiator.phys.nid, event.initiator.phys.pid);
+		assert(event.start);
+		conn_info = event.start;
+		rdma_ptl_process_conn_request(listen_id, conn_info, conn_info_reply);
+		initiator.phys.nid = conn_info->initiator_nid;
+		initiator.phys.pid = conn_info->initiator_pid;
+		SPDK_PTL_DEBUG("[TARGET] Ok created connection state sending reply to client nid: %d pid: %d pt_index: %d",
+			       conn_info->initiator_nid, conn_info->initiator_pid, conn_info->pt_index);
+		rc = PtlPut(memory_desc_handle,           // MD handle
+			    0,                    // local offset in MD
+			    sizeof(*conn_info_reply),   // length to transfer
+			    PTL_ACK_REQ,         // request acknowledgment
+			    initiator,          // target process
+			    conn_info->pt_index,            // portal table index at target
+			    0,          // match bits
+			    0,                   // remote offset
+			    NULL,                // user ptr (for events)
+			    0);                  // hdr_data
 
+		if (rc != PTL_OK) {
+			SPDK_PTL_FATAL("[TARGET] Failed to respond to conn info");
+		}
 		/* Re-register the receive buffer by appending a new list entry */
 		ptl_le_t le;
 		memset(&le, 0, sizeof(ptl_le_t));
@@ -164,8 +215,9 @@ static void *rdma_ptl_cp_server(void *args)
 		le.uid = PTL_UID_ANY;
 		le.options = PTL_SRV_ME_OPTS;
 
-		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_TARGET_MAILBOX, &le,
-				 PTL_PRIORITY_LIST, event.user_ptr, event.user_ptr);
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt),
+				 PTL_CONTROL_PLANE_TARGET_MAILBOX, &le, PTL_PRIORITY_LIST,
+				 event.user_ptr, event.user_ptr);
 		if (rc != PTL_OK) {
 			SPDK_PTL_FATAL(
 				"PtlLEAppend failed in control plane server with code: %d\n",
@@ -723,6 +775,8 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	ptl_conn_request->version = PTL_SPDK_PROTOCOL_VERSION;
 	ptl_conn_request->initiator_nid = ptl_cnxt_get_nid(ptl_cnxt);
 	ptl_conn_request->initiator_pid = ptl_cnxt_get_pid(ptl_cnxt);
+	ptl_conn_request->pt_index =  PTL_CONTROL_PLANE_INITIATOR_MAILBOX;
+
 
 	/* Setup target process identifier */
 	ptl_conn_request->target_nid = rdma_ptl_find_target_nid(id);
@@ -738,7 +792,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 
 	SPDK_PTL_DEBUG("Creating event queue to receive reply from the target regarding the connection request");
 	/*Prepare to receive the reply from the target*/
-	rc = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), 1, &initiator_event_queue);
+	rc = PtlEQAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CQ_SIZE, &initiator_event_queue);
 	if (rc != PTL_OK) {
 		SPDK_PTL_FATAL("PtlEQAlloc for receiving target reply failed with code: %d", rc);
 	}
@@ -823,7 +877,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 			       conn_response_event.type == PTL_EVENT_PUT ? "YES" : "NO");
 	} while (conn_response_event.type != PTL_EVENT_PUT);
 
-	SPDK_PTL_DEBUG("Got connection reply from target NID: %d PID: %d", target.phys.nid,
+	SPDK_PTL_DEBUG("[INITIATOR] Got connection reply from target NID: %d PID: %d", target.phys.nid,
 		       target.phys.pid);
 
 	memcpy(&ptl_id->conn_info, ptl_conn_request, sizeof(*ptl_conn_request));
@@ -834,7 +888,6 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	PtlPTFree(ptl_cnxt_get_ni_handle(ptl_cnxt), initiator_portal);
 	free(ptl_conn_request);
 	free(ptl_conn_reply);
-	raise(SIGINT);
 	/* Create fake RDMA event for compatibility */
 	fake_event = ptl_cm_id_create_event(ptl_id, id, RDMA_CM_EVENT_CONNECT_RESPONSE,
 					    conn_param->private_data,

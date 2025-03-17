@@ -16,5 +16,7 @@ struct ptl_conn_info {
 struct ptl_conn_info_reply {
 	uint64_t version;
 	int status;
+	int pad;
+	uint64_t pad2[6];
 };
 #endif
