@@ -1,4 +1,5 @@
 #include "ptl_context.h"
+#include "lib/rdma_provider/ptl_config.h"
 #include "ptl_log.h"
 #include "ptl_cq.h"
 #include "ptl_object_types.h"
@@ -108,13 +109,13 @@ static bool ptl_cnxt_process_send(ptl_event_t event, struct ibv_wc *wc)
 static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 {
 
-	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc");
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc with code %d event type: %d",event.ni_fail_type, event.type);
 	memset(wc, 0x00, sizeof(*wc));
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
 	wc->opcode = IBV_WC_SEND;
 	wc->wr_id = (uint64_t)event.user_ptr;
-	wc->byte_len = event.mlength;
+	wc->byte_len = 0;
 	wc->qp_num = 0;//Whatever
 	wc->src_qp = 0;
 
@@ -250,7 +251,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	}
 
 	ptl_context.object_type = PTL_CONTEXT;
-	ptl_context.portals_idx = 0;
+	ptl_context.portals_idx = PTL_DATA_PLANE_PT_INDEX;
 	SPDK_PTL_DEBUG("Calling PtlInit()");
 	ret = PtlInit();
 	if (ret != PTL_OK) {

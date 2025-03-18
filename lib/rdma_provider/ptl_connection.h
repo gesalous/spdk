@@ -5,12 +5,12 @@
 
 struct ptl_conn_info {
 	uint64_t version;
-	int target_nid;
-	int target_pid;
-	int initiator_nid;
-	int initiator_pid;
+	int src_nid;
+	int src_pid;
 	/*where client expects the reply*/
-	int pt_index;
+	int dst_pt_index;
+  int dst_nid;
+  int dst_pid;
 };
 
 struct ptl_conn_info_reply {

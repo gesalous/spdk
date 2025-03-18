@@ -18,6 +18,7 @@
 #include "spdk/util.h"
 #include "spdk_internal/rdma_provider.h"
 #include "spdk_internal/rdma_utils.h"
+#include <infiniband/verbs.h>
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
 
@@ -120,7 +121,6 @@ bool spdk_rdma_provider_srq_queue_recv_wrs(
 
 	assert(rdma_srq->stats);
 	recv_stats = rdma_srq->stats;
-	uint64_t diff = recv_stats->num_submitted_wrs;
 	recv_stats->num_submitted_wrs++;
 	last = first;
 	while (last->next != NULL) {
@@ -217,7 +217,6 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 
 	}
 	SPDK_PTL_DEBUG("Ok append the iovector in Portals");
-	SPDK_PTL_DEBUG("UNIMPLEMENTED do the cleanup? XXX TODO XXX!");
 	// rc = ibv_post_srq_recv(rdma_srq->srq, rdma_srq->recv_wrs.first, bad_wr);
 	rdma_srq->recv_wrs.first = NULL;
 	rdma_srq->stats->doorbell_updates++;
@@ -230,7 +229,6 @@ bool spdk_rdma_provider_qp_queue_recv_wrs(
 
 	assert(spdk_rdma_qp);
 	assert(first);
-	SPDK_PTL_DEBUG("DOING SAME STAFF AS VERBS");
 	struct spdk_rdma_provider_wr_stats *recv_stats =
 			&spdk_rdma_qp->stats->recv;
 	struct spdk_rdma_provider_recv_wr_list *recv_wrs =
@@ -420,7 +418,7 @@ int spdk_rdma_provider_qp_complete_connect(
 	/* Nothing to be done for Portals */
 	SPDK_PTL_DEBUG("CREATE FAKE RDMA_CM_EVENT_ESTABLISHED event");
 	fake_event = ptl_cm_id_create_event(ptl_id,
-					    spdk_rdma_qp->cm_id,
+					    NULL,
 					    RDMA_CM_EVENT_ESTABLISHED, NULL, 0);
 	ptl_cm_id_add_event(ptl_id, fake_event);
 
@@ -472,6 +470,30 @@ spdk_rdma_provider_qp_queue_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	}
 }
 
+
+// static int spdk_rdma_ptl_read_data(struct ptl_qp *ptl_qp){
+//   ptl_process_t remote_process = {.phys.nid = ptl_qp->remote_nid,.phys.pid=ptl_qp->remote_nid};
+//   int ret;
+
+//     // Perform the PtlGet operation
+//     ret = PtlGet(md_handle,                // Local memory descriptor handle
+//                  local_offset,             // Offset in local memory
+//                  length,                   // Length of data to read
+//                  remote_process,           // Remote process ID
+//                  PTL_DATA_PLANE_PT_INDEX,          // Remote portal table index
+//                  0,                         // Match bits for remote memory
+//                  0,                         // Offset in remote memory
+//                  NULL,                     // User-provided pointer (optional)
+//                  0);                       // AMO operation (not used here)
+
+//     if (ret != PTL_OK) {
+//         fprintf(stderr, "PtlGet failed: %d\n", ret);
+//     } else {
+//         printf("PtlGet operation initiated successfully\n");
+//     }
+//   return 0;
+// }
+
 int
 spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				     struct ibv_send_wr **bad_wr)
@@ -483,9 +505,8 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	struct ptl_qp *ptl_qp = ptl_qp_get_from_ibv_qp(spdk_rdma_qp->qp);
 	struct ptl_pd *ptl_pd = ptl_qp_get_pd(ptl_qp);
-	struct ptl_context *ptl_context = ptl_cnxt_get();
 	struct ptl_mem_desc ptl_mem_desc;
-	ptl_process_t target = {.phys.nid = 1, .phys.pid = 16};
+	ptl_process_t target = {.phys.nid = ptl_qp->remote_nid, .phys.pid = ptl_qp->remote_pid};
 	uint64_t local_offset;
 
 
@@ -497,6 +518,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	SPDK_PTL_DEBUG("======> INFO about the send list of NVMe commands");
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
+    SPDK_PTL_DEBUG("Wr opcode is %d",wr->opcode);
 		if (wr->num_sge != 1) {
 			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry");
 		}
@@ -507,20 +529,19 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			if (false == ptl_mem_desc.is_valid) {
 				SPDK_PTL_FATAL("MEM desc not found!");
 			}
-			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc.mem_desc.start;
+			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc.mem_desc->start;
 			SPDK_PTL_DEBUG("=====> SGE[%d]: Address = 0x%lx, Length = %u bytes local offset: %lu\n",
 				       i,
 				       wr->sg_list[i].addr,
 				       wr->sg_list[i].length, local_offset);
 
-
-
+      SPDK_PTL_DEBUG("----> Sending a PtlPut to nid: %d pid: %d pt_index: %d",target.phys.nid,target.phys.pid,ptl_qp->remote_pt_index);
 			rc = PtlPut(ptl_mem_desc.mem_handle,
 				    local_offset,           // local offset
 				    wr->sg_list[i].length,         // length
 				    PTL_ACK_REQ,                   // ack request
 				    target,       // target process
-				    ptl_cnxt_get_portal_index(ptl_context),        // portal table index
+				    ptl_qp->remote_pt_index,        // portal table index
 				    0,      // match bits
 				    0,      // remote offset, don't care let target decide
 				    (void *)wr->wr_id,             // user ptr
@@ -529,7 +550,6 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			if (rc != PTL_OK) {
 				SPDK_PTL_FATAL("PtlPut failed with rc: %d", rc);
 			}
-			// raise(SIGINT);
 
 			// ptl_ct_event_t ct_event;
 			// rc = PtlCTWait(ptl_mem_desc.mem_desc.ct_handle, 1, &ct_event);
@@ -554,7 +574,6 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	spdk_rdma_qp->send_wrs.first = NULL;
 	spdk_rdma_qp->stats->send.doorbell_updates++;
-	sleep(10);
 	return 0;
 
 }
