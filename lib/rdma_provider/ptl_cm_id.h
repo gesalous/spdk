@@ -43,8 +43,8 @@ static inline struct ptl_cm_id *ptl_cm_id_get(struct rdma_cm_id *id)
 	return ptl_id;
 }
 
-struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,
-		struct rdma_cm_id *id,
+
+struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,struct ptl_cm_id *listen_id,
 		enum rdma_cm_event_type event_type, const void *private_data, size_t private_data_len);
 
 

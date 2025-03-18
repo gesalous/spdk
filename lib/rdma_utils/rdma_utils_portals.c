@@ -19,6 +19,7 @@
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
 #include <stdint.h>
+#include <stdlib.h>
 struct rdma_utils_device {
 	struct ibv_pd			*pd;
 	struct ibv_context		*context;
@@ -109,6 +110,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	struct ibv_pd *pd = rmap->pd;
 	struct ibv_mr *mr;
 	struct ptl_context * ptl_context;
+	ptl_md_t *mem_descriptor = NULL;
 	uint32_t access_flags;
 	int rc;
 	int ret;
@@ -125,7 +127,6 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	}
 
 	ptl_context = ptl_cnxt_get_from_ibvpd(rmap->pd);
-	SPDK_PTL_DEBUG("Ok got portals context!");
 	spdk_ptl_print_access_flags(rmap->access_flags);
 
 	switch (action) {
@@ -141,18 +142,21 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 #ifdef IBV_ACCESS_OPTIONAL_FIRST
 		access_flags |= IBV_ACCESS_RELAXED_ORDERING;
 #endif
+    if(posix_memalign((void **)&mem_descriptor, 4096, sizeof(*mem_descriptor))){
+      SPDK_PTL_FATAL("Failed to allocate memory for the mem descriptor");
+    }
 		/* Portals staff follows*/
-		ptl_md_t mem_descriptor = {0};
-		mem_descriptor.start = vaddr;
-		mem_descriptor.length = size;
-		mem_descriptor.eq_handle = ptl_cq_get_queue(ptl_cq);
-		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor.ct_handle);
+		mem_descriptor->start = vaddr;
+    mem_descriptor->options = 0;
+		mem_descriptor->length = size;
+		mem_descriptor->eq_handle = ptl_cq_get_queue(ptl_cq);
+		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor->ct_handle);
 		if (PTL_OK != rc) {
 			SPDK_PTL_FATAL("Failed to allocate a counting event");
 		}
 		ptl_handle_md_t mem_handle;
 
-		ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor,
+		ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), mem_descriptor,
 				&mem_handle);
 		if (PTL_OK != ret) {
 			SPDK_PTL_FATAL("Failed to register virtual addr %p of size: %lu",
