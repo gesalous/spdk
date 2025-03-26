@@ -154,8 +154,8 @@ static bool ptl_cnxt_process_search(ptl_event_t event, struct ibv_wc *wc)
 static bool ptl_cnxt_process_link(ptl_event_t event, struct ibv_wc *wc)
 {
 
-	SPDK_PTL_DEBUG("PROCESS LINK EVENT OK go on");
-	return true;
+	SPDK_PTL_DEBUG("PROCESS LINK EVENT OK go on PORTALS internal");
+	return false;
 }
 
 static process_event handler[16] = {
@@ -251,7 +251,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	}
 
 	ptl_context.object_type = PTL_CONTEXT;
-	ptl_context.portals_idx = PTL_DATA_PLANE_PT_INDEX;
+	ptl_context.portals_idx_send_recv = PTL_PT_INDEX_SEND_RECV;
 	SPDK_PTL_DEBUG("Calling PtlInit()");
 	ret = PtlInit();
 	if (ret != PTL_OK) {
@@ -315,7 +315,7 @@ struct ptl_context *ptl_cnxt_get_from_ibvpd(struct ibv_pd *ib_pd)
 
 ptl_pt_index_t ptl_cnxt_get_portal_index(struct ptl_context *cnxt)
 {
-	return cnxt->portals_idx;
+	return cnxt->portals_idx_send_recv;
 }
 
 ptl_handle_ni_t ptl_cnxt_get_ni_handle(struct ptl_context *cnxt)

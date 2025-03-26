@@ -9,16 +9,22 @@
 #include <stdint.h>
 #define PTL_PD_MAX_MEM_DESC 32
 struct spdk_rdma_utils_mem_map;
-struct ptl_mem_desc {
-	ptl_handle_md_t mem_handle;
-	ptl_md_t * mem_desc;
+
+struct ptl_pd_mem_desc {
+	ptl_md_t local_w_mem_desc;
+	ptl_le_t remote_wr_le;
+	ptl_handle_md_t local_w_mem_handle;
+	ptl_handle_md_t remote_rw_mem_handle;
+	ptl_handle_ct_t remote_rw_ct_handle;
+	bool remote_read;
+	bool remote_write;
 	bool is_valid;
 };
 
 struct ptl_pd {
 	ptl_obj_type_e object_type;
 	struct ibv_pd fake_pd;
-	struct ptl_mem_desc ptl_mem_desc[PTL_PD_MAX_MEM_DESC];
+	struct ptl_pd_mem_desc *ptl_mem_desc[PTL_PD_MAX_MEM_DESC];
 	struct ptl_context *ptl_cnxt;
 	uint32_t num_ptl_mem_desc;
 
@@ -85,7 +91,8 @@ static inline struct ptl_eq *ptl_pd_get_ptl_cq(struct ptl_pd *ptl_pd)
 	return ptl_pd->ptl_eq;
 }
 
-bool ptl_pd_add_mem_desc(struct ptl_pd *ptl_pd, ptl_handle_md_t mem_handle, ptl_md_t  *mem_desc);
+bool ptl_pd_add_mem_desc(struct ptl_pd *ptl_pd, struct ptl_pd_mem_desc *mem_desc);
 
-struct ptl_mem_desc ptl_pd_get_mem_desc(struct ptl_pd *ptl_pd, uint64_t base, size_t length);
+struct ptl_pd_mem_desc *ptl_pd_get_mem_desc(struct ptl_pd *ptl_pd, uint64_t address,
+		size_t length, bool is_local_operation, bool is_remote_operation);
 #endif

@@ -7,7 +7,9 @@
 /**
   * Portal index number where the actual nvme commands and data are transfered
 **/
-#define PTL_DATA_PLANE_PT_INDEX 0
+#define PTL_PT_INDEX_SEND_RECV 0
+
+#define PTL_PT_INDEX_RMA 1
 
 /**
  * Portal index number where clients use during rdma_connect to notify the
@@ -15,9 +17,9 @@
  * table from queue pair id to nid,pid that Portals uses for point to point
  * communication.
  */
-#define PTL_CONTROL_PLANE_TARGET_MAILBOX 1
+#define PTL_PT_INDEX_TARGET_MAILBOX 2
 
-#define PTL_CONTROL_PLANE_INITIATOR_MAILBOX 2
+#define PTL_PT_INDEX_INITIATOR_MAILBOX 3
 /**
  * Number of recv buffers posted through PtlLEAppend for receiving new
  *connection info from clients.
