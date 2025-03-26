@@ -495,6 +495,8 @@ spdk_rdma_provider_qp_queue_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 // }
 
 static void spdk_rdma_ptl_read_info(struct ibv_send_wr *wr) {
+
+    SPDK_PTL_DEBUG("Wr opcode is %d",wr->opcode);
     if (wr->opcode != IBV_WR_RDMA_READ) {
         SPDK_PTL_DEBUG("Not an RDMA read operation\n");
         return;
@@ -514,6 +516,28 @@ static void spdk_rdma_ptl_read_info(struct ibv_send_wr *wr) {
         SPDK_PTL_DEBUG("  Length: %u\n", wr->sg_list[i].length);
         SPDK_PTL_DEBUG("  Local Key (lkey): 0x%x\n", wr->sg_list[i].lkey);
     }
+}
+
+
+static void spdk_rdma_provider_ptl_rdma_read(struct ptl_pd *ptl_pd, struct ptl_qp *ptl_qp, struct ibv_send_wr *wr){
+  ptl_process_t destination = {.phys.nid = ptl_qp->remote_nid, .phys.pid = ptl_qp->remote_pid};
+  int rc;
+  
+  if (wr->num_sge != 1) {
+    SPDK_PTL_FATAL("num sge greater than one for rdma read?");
+  }
+
+
+  struct ptl_pd_mem_desc * ptl_pd_mem_desc = ptl_pd_get_mem_desc(ptl_pd, wr->sg_list[0].addr, wr->sg_list[0].length, true,
+                      false);
+  if(NULL == ptl_pd_mem_desc ){
+    SPDK_PTL_FATAL("Failed to find descriptor");
+  }
+  SPDK_PTL_DEBUG("Performing an RDMA read from node nid: %d pid: %d portal index: %d", destination.phys.nid, destination.phys.pid,PTL_PT_INDEX_RMA);
+  rc = PtlGet(ptl_pd_mem_desc->local_w_mem_handle, 0, wr->sg_list[0].length, destination, PTL_PT_INDEX_RMA, 0, wr->wr.rdma.remote_addr, NULL);
+  if(PTL_OK != rc){
+    SPDK_PTL_FATAL("Remote RDMA read failed Sorry!");
+  }
 }
 
 int
@@ -538,10 +562,15 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		return 0;
 	}
 
+
 	SPDK_PTL_DEBUG("======> INFO about the send list of NVMe commands");
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
-    SPDK_PTL_DEBUG("Wr opcode is %d",wr->opcode);
+
     spdk_rdma_ptl_read_info(wr);
+    if(wr->opcode == IBV_WR_RDMA_READ){
+      spdk_rdma_provider_ptl_rdma_read(ptl_pd, ptl_qp, wr);
+      continue;
+    }
 		if (wr->num_sge != 1) {
 			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry");
 		}
