@@ -2,11 +2,12 @@
  *   Copyright (c) Intel Corporation. All rights reserved.
  *   Copyright (c) 2023-2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
-#include "../rdma_provider/ptl_log.h"
 #include "../rdma_provider/ptl_cm_id.h"
+#include "../rdma_provider/ptl_config.h"
 #include "../rdma_provider/ptl_context.h"
 #include "../rdma_provider/ptl_cq.h"
-#include "lib/rdma_provider/ptl_pd.h"
+#include "../rdma_provider/ptl_log.h"
+#include "../rdma_provider/ptl_pd.h"
 #include "spdk/file.h"
 #include "spdk/likely.h"
 #include "spdk/log.h"
@@ -18,6 +19,7 @@
 #include <portals4.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
+#include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
 struct rdma_utils_device {
@@ -97,28 +99,70 @@ static void spdk_ptl_print_access_flags(uint32_t access_flags)
 		SPDK_PTL_INFO("No access flags set");
 	}
 }
+
+static inline bool rdma_utils_ptl_is_local_write(uint32_t access_flags)
+{
+	return !!(access_flags & IBV_ACCESS_LOCAL_WRITE);
+}
+
+static inline bool rdma_utils_ptl_is_remote_write(uint32_t access_flags)
+{
+	return !!(access_flags & IBV_ACCESS_REMOTE_WRITE);
+}
+
+static inline bool rdma_utils_ptl_is_remote_read(uint32_t access_flags)
+{
+	return !!(access_flags & IBV_ACCESS_REMOTE_READ);
+}
+
+static inline bool rdma_utils_ptl_is_remote_atomic(uint32_t access_flags)
+{
+	bool ret =  !!(access_flags & IBV_ACCESS_REMOTE_ATOMIC);
+	if (ret) {
+		SPDK_PTL_FATAL("Sorry unsupported atomic staff yet");
+	}
+	return ret;
+}
+
+static inline bool rdma_utils_ptl_is_remote_access_mw_bind(uint32_t access_flags)
+{
+	bool ret =  !!(access_flags & IBV_ACCESS_MW_BIND);
+	if (ret) {
+		SPDK_PTL_FATAL("Unsupported staff yet");
+	}
+	return ret;
+}
+
+static inline bool rdma_utils_ptl_is_access_zero_based(uint32_t access_flags)
+{
+	bool ret = !!(access_flags & IBV_ACCESS_ZERO_BASED);
+	if (ret) {
+		SPDK_PTL_FATAL("Unsupported staff yet");
+	}
+	return ret;
+}
+
+
+
 static int
 rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		      enum spdk_mem_map_notify_action action,
 		      void *vaddr, size_t size)
 {
-	SPDK_PTL_DEBUG("RDMAUTILSPTL: Registering memory vaddr is: %p size is: %lu action is: %d", vaddr,
-		       size, action);
+	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
 	struct ptl_pd *ptl_pd;
 	struct ptl_cq *ptl_cq;
 	struct spdk_rdma_utils_mem_map *rmap = cb_ctx;
 	struct ibv_pd *pd = rmap->pd;
 	struct ibv_mr *mr;
 	struct ptl_context * ptl_context;
-	ptl_md_t *mem_descriptor = NULL;
-	uint32_t access_flags;
-	int rc;
+	struct ptl_pd_mem_desc * ptl_pd_mem_desc  = NULL;
+	int rc = -1;
 	int ret;
+	int access_flags;
 
-
-	ptl_pd = ptl_pd_get_from_ibv_pd(pd);
-	ptl_cq = ptl_cq_get_instance(NULL);
-
+	SPDK_PTL_DEBUG("RDMAUTILSPTL: Registering memory vaddr is: %p size is: %lu action is: %d", vaddr,
+		       size, action);
 
 	if (rmap->hooks && (rmap->hooks->put_rkey || rmap->hooks->get_rkey ||
 			    rmap->hooks->get_ibv_pd)) {
@@ -126,13 +170,22 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 			"Sorry custom hooks are not YET supported in SPDK PORTALS.");
 	}
 
+	/*Check first for known unsuported yet features*/
+	access_flags = rmap->access_flags;
+	rdma_utils_ptl_is_remote_atomic(access_flags);
+	rdma_utils_ptl_is_remote_access_mw_bind(access_flags);
+	rdma_utils_ptl_is_access_zero_based(access_flags);
+
+	ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+	ptl_cq = ptl_cq_get_instance(NULL);
 	ptl_context = ptl_cnxt_get_from_ibvpd(rmap->pd);
-	spdk_ptl_print_access_flags(rmap->access_flags);
+	spdk_ptl_print_access_flags(access_flags);
 
 	switch (action) {
 	case SPDK_MEM_MAP_NOTIFY_REGISTER:
 		if (rmap->hooks && rmap->hooks->get_rkey) {
 			/*gesalous, impossible path*/
+			SPDK_PTL_FATAL("Impossible path");
 			rc = spdk_mem_map_set_translation(
 				     map, (uint64_t)vaddr, size,
 				     rmap->hooks->get_rkey(pd, vaddr, size));
@@ -140,35 +193,79 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		}
 		access_flags = rmap->access_flags;
 #ifdef IBV_ACCESS_OPTIONAL_FIRST
+		SPDK_PTL_DEBUG("Unsupported staff XXX TODO XXX");
 		access_flags |= IBV_ACCESS_RELAXED_ORDERING;
 #endif
-    if(posix_memalign((void **)&mem_descriptor, 4096, sizeof(*mem_descriptor))){
-      SPDK_PTL_FATAL("Failed to allocate memory for the mem descriptor");
-    }
-		/* Portals staff follows*/
-		mem_descriptor->start = vaddr;
-    mem_descriptor->options = 0;
-		mem_descriptor->length = size;
-		mem_descriptor->eq_handle = ptl_cq_get_queue(ptl_cq);
-		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &mem_descriptor->ct_handle);
+		ptl_pd_mem_desc = calloc(1UL, sizeof(*ptl_pd_mem_desc));
+
+		if (rdma_utils_ptl_is_local_write(access_flags)) {
+			SPDK_PTL_DEBUG("IBV_LOCAL_WRITE requested calling PtlMDBind()");
+			/* Portals staff follows*/
+			ptl_pd_mem_desc->local_w_mem_desc.start = vaddr;
+			ptl_pd_mem_desc->local_w_mem_desc.options = 0;
+			ptl_pd_mem_desc->local_w_mem_desc.length = size;
+			ptl_pd_mem_desc->local_w_mem_desc.eq_handle = ptl_cq_get_queue(ptl_cq);
+			rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &ptl_pd_mem_desc->local_w_mem_desc.ct_handle);
+			if (PTL_OK != rc) {
+				SPDK_PTL_FATAL("Failed to allocate a counting event");
+			}
+
+			ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), &ptl_pd_mem_desc->local_w_mem_desc,
+					&ptl_pd_mem_desc->local_w_mem_handle);
+			if (PTL_OK != ret) {
+				SPDK_PTL_FATAL("Failed to register virtual addr %p of size: %lu",
+					       vaddr, size);
+			}
+		}
+
+		if (false == rdma_utils_ptl_is_remote_write(access_flags) &&
+		    false == rdma_utils_ptl_is_remote_read(access_flags)) {
+			SPDK_PTL_DEBUG("No remote READ or WRITE requested for the memory bye bye");
+			goto done;
+
+		}
+		SPDK_PTL_DEBUG("Memory registration for RMA operations requested....");
+
+		ptl_pd_mem_desc->remote_wr_le.start = 0;
+		ptl_pd_mem_desc->remote_wr_le.length = UINT64_MAX;
+		ptl_pd_mem_desc->remote_wr_le.uid = PTL_UID_ANY;
+		ptl_pd_mem_desc->remote_wr_le.match_bits  = 0;
+		ptl_pd_mem_desc->remote_wr_le.ignore_bits = 0;
+		ptl_pd_mem_desc->remote_wr_le.min_free    = 0;
+
+		ptl_pd_mem_desc->remote_read = rdma_utils_ptl_is_remote_read(access_flags);
+		ptl_pd_mem_desc->remote_write = rdma_utils_ptl_is_remote_write(access_flags);
+
+		/*Create and associate counting events*/
+		ret = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), &ptl_pd_mem_desc->remote_rw_ct_handle);
+		if (ret != PTL_OK) {
+			SPDK_PTL_FATAL("Failed to allocate counting event");
+		}
+		ptl_pd_mem_desc->remote_wr_le.ct_handle = ptl_pd_mem_desc->remote_rw_ct_handle;
+		ptl_pd_mem_desc->remote_wr_le.options = 0;
+		if (ptl_pd_mem_desc->remote_read) {
+			SPDK_PTL_DEBUG("Enabling READ access for the remote region as requested");
+			ptl_pd_mem_desc->remote_wr_le.options     |= PTL_ME_OP_GET;
+		}
+		if (ptl_pd_mem_desc->remote_write) {
+			SPDK_PTL_DEBUG("Enabling WRITE access for the remote region as requested");
+			ptl_pd_mem_desc->remote_wr_le.options     |= PTL_ME_OP_PUT;
+		}
+
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX_RMA, &ptl_pd_mem_desc->remote_wr_le,
+				 PTL_PRIORITY_LIST, NULL, &ptl_pd_mem_desc->remote_rw_mem_handle);
+		if (rc != PTL_OK) {
+			SPDK_PTL_FATAL("PtlLEAppend failed with error code: %d", rc);
+		}
+		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &ptl_pd_mem_desc->remote_wr_le.ct_handle);
 		if (PTL_OK != rc) {
 			SPDK_PTL_FATAL("Failed to allocate a counting event");
 		}
-		ptl_handle_md_t mem_handle;
 
-		ret = PtlMDBind(ptl_cnxt_get_ni_handle(ptl_context), mem_descriptor,
-				&mem_handle);
-		if (PTL_OK != ret) {
-			SPDK_PTL_FATAL("Failed to register virtual addr %p of size: %lu",
-				       vaddr, size);
-		}
-		rc = spdk_mem_map_set_translation(map, (uint64_t)vaddr, size,
-						  (uint64_t)mem_handle.handle);
-		//keep it also for ptl_context just in case...
-		if (false == ptl_pd_add_mem_desc(ptl_pd, mem_handle, mem_descriptor)) {
-			SPDK_PTL_FATAL("Failed to keep memory handle in portals context");
-		}
-		SPDK_PTL_DEBUG("Registered memory with Portals");
+		SPDK_PTL_DEBUG("Remote Memory Access ENABLED. REMOTE_WRITE: %s REMOTE_READ: %s",
+			       rdma_utils_ptl_is_remote_write(access_flags) ? "YES" : "NO",
+			       rdma_utils_ptl_is_remote_read(access_flags) ? "YES" : "NO");
+
 		/*Vanilla staff*/
 		// mr = ibv_reg_mr(pd, vaddr, size, access_flags);
 		// if (mr == NULL) {
@@ -176,7 +273,15 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		//   return -1;
 		// }
 		// rc = spdk_mem_map_set_translation(map, (uint64_t)vaddr, size,
-		//                                   (uint64_t)mr);
+		//
+		//(uint64_t)mr);
+done:
+		rc = ptl_pd_mem_desc->local_w_mem_handle.handle ? spdk_mem_map_set_translation(map, (uint64_t)vaddr,
+			size,
+			(uint64_t)ptl_pd_mem_desc->local_w_mem_handle.handle) : -1;
+		if (false == ptl_pd_add_mem_desc(ptl_pd, ptl_pd_mem_desc)) {
+			SPDK_PTL_FATAL("Failed to keep memory handle in portals context");
+		}
 		SPDK_PTL_DEBUG("DONE with memory registration in Portals");
 		break;
 	case SPDK_MEM_MAP_NOTIFY_UNREGISTER:

@@ -71,7 +71,7 @@ spdk_rdma_provider_srq_create(struct spdk_rdma_provider_srq_init_attr *init_attr
 		rdma_srq->stats = calloc(1UL, sizeof(*rdma_srq->stats));
 		if (!rdma_srq->stats) {
 			SPDK_PTL_FATAL("SRQ statistics memory allocation failed");
-			free(rdma_srq);
+			free(portals_srq);
 			return NULL;
 		}
 	}
@@ -494,6 +494,28 @@ spdk_rdma_provider_qp_queue_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 //   return 0;
 // }
 
+static void spdk_rdma_ptl_read_info(struct ibv_send_wr *wr) {
+    if (wr->opcode != IBV_WR_RDMA_READ) {
+        SPDK_PTL_DEBUG("Not an RDMA read operation\n");
+        return;
+    }
+
+    SPDK_PTL_DEBUG("RDMA Read Operation Details:\n");
+    SPDK_PTL_DEBUG("Remote Address (target): 0x%lx\n", (unsigned long)wr->wr.rdma.remote_addr);
+    SPDK_PTL_DEBUG("Remote Key (rkey): 0x%x\n", wr->wr.rdma.rkey);
+    SPDK_PTL_DEBUG("Local Address: 0x%lx\n", (unsigned long)wr->sg_list[0].addr);
+    SPDK_PTL_DEBUG("Length: %u bytes\n", wr->sg_list[0].length);
+    SPDK_PTL_DEBUG("Number of scatter/gather elements: %d\n", wr->num_sge);
+    
+    // If there are multiple scatter/gather elements
+    for (int i = 0; i < wr->num_sge; i++) {
+        SPDK_PTL_DEBUG("SG Element %d:\n", i);
+        SPDK_PTL_DEBUG("  Local Address: 0x%lx\n", (unsigned long)wr->sg_list[i].addr);
+        SPDK_PTL_DEBUG("  Length: %u\n", wr->sg_list[i].length);
+        SPDK_PTL_DEBUG("  Local Key (lkey): 0x%x\n", wr->sg_list[i].lkey);
+    }
+}
+
 int
 spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				     struct ibv_send_wr **bad_wr)
@@ -505,7 +527,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 	struct ptl_qp *ptl_qp = ptl_qp_get_from_ibv_qp(spdk_rdma_qp->qp);
 	struct ptl_pd *ptl_pd = ptl_qp_get_pd(ptl_qp);
-	struct ptl_mem_desc ptl_mem_desc;
+	struct ptl_pd_mem_desc * ptl_mem_desc;
 	ptl_process_t target = {.phys.nid = ptl_qp->remote_nid, .phys.pid = ptl_qp->remote_pid};
 	uint64_t local_offset;
 
@@ -519,24 +541,25 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	SPDK_PTL_DEBUG("======> INFO about the send list of NVMe commands");
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
     SPDK_PTL_DEBUG("Wr opcode is %d",wr->opcode);
+    spdk_rdma_ptl_read_info(wr);
 		if (wr->num_sge != 1) {
 			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry");
 		}
 
 		for (int i = 0; i < wr->num_sge; i++) {
-			ptl_mem_desc = ptl_pd_get_mem_desc(ptl_pd, wr->sg_list[i].addr, wr->sg_list[i].length);
+			ptl_mem_desc = ptl_pd_get_mem_desc(ptl_pd, wr->sg_list[i].addr, wr->sg_list[i].length, true, false);
 
-			if (false == ptl_mem_desc.is_valid) {
+			if (NULL == ptl_mem_desc) {
 				SPDK_PTL_FATAL("MEM desc not found!");
 			}
-			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc.mem_desc->start;
+			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc->local_w_mem_desc.start;
 			SPDK_PTL_DEBUG("=====> SGE[%d]: Address = 0x%lx, Length = %u bytes local offset: %lu\n",
 				       i,
 				       wr->sg_list[i].addr,
 				       wr->sg_list[i].length, local_offset);
 
       SPDK_PTL_DEBUG("----> Sending a PtlPut to nid: %d pid: %d pt_index: %d",target.phys.nid,target.phys.pid,ptl_qp->remote_pt_index);
-			rc = PtlPut(ptl_mem_desc.mem_handle,
+			rc = PtlPut(ptl_mem_desc->local_w_mem_handle,
 				    local_offset,           // local offset
 				    wr->sg_list[i].length,         // length
 				    PTL_ACK_REQ,                   // ack request

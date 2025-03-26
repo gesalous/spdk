@@ -20,7 +20,8 @@ struct ptl_context_le_metadata {
 struct ptl_context {
 	ptl_obj_type_e object_type;
 	ptl_handle_ni_t ni_handle;
-	ptl_pt_index_t portals_idx;
+	ptl_pt_index_t portals_idx_send_recv;
+	ptl_pt_index_t portals_idx_rma;
 	/*gesalous, portals staff*/
 	struct ptl_pd *ptl_pd;
 	struct ibv_context fake_ibv_cnxt;

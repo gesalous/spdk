@@ -13,6 +13,8 @@ struct ptl_qp {
 	struct ptl_cq *send_cq;
 	struct ptl_cq *recv_cq;
 	struct ibv_qp fake_qp;
+  size_t remote_page_size;
+  size_t remote_alignment_size;
   int remote_nid; /*node id for Portals*/
   int remote_pid; /* pid for Portals*/
   int remote_pt_index; /*Portals index for destination*/

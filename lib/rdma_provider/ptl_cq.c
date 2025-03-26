@@ -17,6 +17,7 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 	int ret;
 	RDMA_CM_LOCK(&event_queue.lock);
 	if (event_queue.initialized) {
+    ptl_cq = &event_queue;
 		goto exit;
 	}
 
@@ -32,11 +33,20 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 	}
 	ret =
 		PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cq->ptl_context), 0,
-			   ptl_cq->eq_handle, PTL_DATA_PLANE_PT_INDEX, &ptl_cq->ptl_context->portals_idx);
+			   ptl_cq->eq_handle, PTL_PT_INDEX_SEND_RECV, &ptl_cq->ptl_context->portals_idx_send_recv);
 	if (ret != PTL_OK) {
-		SPDK_PTL_FATAL("PtlPTAlloc failed");
+		SPDK_PTL_FATAL("PtlPTAlloc failed for SEND/RECV PORTALS INDEX");
 	}
-	SPDK_PTL_DEBUG("Allocated portals index: %u", ptl_cq->ptl_context->portals_idx);
+	SPDK_PTL_DEBUG("Allocated portals index: %u for SEND RECV operations", ptl_cq->ptl_context->portals_idx_send_recv);
+	
+  ret =
+		PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cq->ptl_context), 0,
+			   ptl_cq->eq_handle, PTL_PT_INDEX_RMA, &ptl_cq->ptl_context->portals_idx_rma);
+	if (ret != PTL_OK) {
+		SPDK_PTL_FATAL("PtlPTAlloc failed, for RDMA PORTALS INDEX");
+	}
+	
+  SPDK_PTL_DEBUG("Allocated portals index: %u for RMA operations", ptl_cq->ptl_context->portals_idx_rma);
 
 	ptl_cq->cq_context = cq_context;
 

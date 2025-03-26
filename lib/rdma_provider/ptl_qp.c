@@ -31,7 +31,7 @@ struct ptl_qp *ptl_qp_create(struct ptl_pd *ptl_pd, struct ptl_cq *send_queue,
   
   ptl_qp->remote_nid = conn_info->dst_nid;
   ptl_qp->remote_pid = conn_info->dst_pid;
-  ptl_qp->remote_pt_index = PTL_DATA_PLANE_PT_INDEX;
+  ptl_qp->remote_pt_index = PTL_PT_INDEX_SEND_RECV;
 	return ptl_qp;
 }
 

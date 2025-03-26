@@ -59,6 +59,7 @@ static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id,
 	struct ptl_cq *ptl_cq = ptl_cq_get_instance(NULL);
 	struct ptl_conn_info new_conn = {.dst_nid = conn_info->src_nid, .dst_pid = conn_info->src_pid, .src_pid = conn_info->dst_pid, .src_nid = conn_info->dst_nid};
 
+
 	struct ptl_cm_id * ptl_id = ptl_cm_id_create(listen_id->ptl_channel, listen_id->ptl_context);
 
 	struct ptl_qp *ptl_qp = ptl_qp_create(ptl_cnxt->ptl_pd, ptl_cq, ptl_cq, &new_conn);
@@ -175,7 +176,7 @@ static void *rdma_ptl_cp_server(void *args)
 		le.options = PTL_SRV_ME_OPTS;
 
 		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt),
-				 PTL_CONTROL_PLANE_TARGET_MAILBOX, &le, PTL_PRIORITY_LIST,
+				 PTL_PT_INDEX_TARGET_MAILBOX, &le, PTL_PRIORITY_LIST,
 				 event.user_ptr, event.user_ptr);
 		if (rc != PTL_OK) {
 			SPDK_PTL_FATAL(
@@ -220,10 +221,10 @@ static void rdma_ptl_boot_cp_server(struct  ptl_cm_id *listen_id)
 	}
 	/*Bind it to the portal index*/
 	rc = PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), 0, ptl_control_plane_server.eq_handle,
-			PTL_CONTROL_PLANE_TARGET_MAILBOX, &ptl_control_plane_server.pt_index);
+			PTL_PT_INDEX_TARGET_MAILBOX, &ptl_control_plane_server.pt_index);
 	if (rc != PTL_OK) {
 		SPDK_PTL_FATAL("Error allocating portal for connection server %d reason: %d",
-			       PTL_CONTROL_PLANE_TARGET_MAILBOX, rc);
+			       PTL_PT_INDEX_TARGET_MAILBOX, rc);
 	}
 
 	for (uint32_t i = 0; i < ptl_control_plane_server.num_conn_info; i++) {
@@ -241,7 +242,7 @@ static void rdma_ptl_boot_cp_server(struct  ptl_cm_id *listen_id)
 		le.options = PTL_SRV_ME_OPTS;
 
 		// Append LE for receiving control messages
-		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_TARGET_MAILBOX, &le,
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX_TARGET_MAILBOX, &le,
 				 PTL_PRIORITY_LIST, &ptl_control_plane_server.le_handle[i], &ptl_control_plane_server.le_handle[i]);
 		if (rc != PTL_OK) {
 			SPDK_PTL_FATAL("PtlLEAppend failed in control plane server with code: %d\n", rc);
@@ -697,9 +698,9 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 			       ptl_qp->remote_nid, ptl_qp->remote_pid, ptl_qp->remote_pt_index);
 		return 0;
 	}
-
 	conn_info.dst_nid = rdma_ptl_find_target_nid(id);
 	conn_info.dst_pid = PTL_TARGET_PID;
+  conn_info.dst_pt_index = PTL_PT_INDEX_TARGET_MAILBOX;
 	conn_info.src_nid = -1;
 	conn_info.src_pid = -1;
 	SPDK_PTL_DEBUG("Creating queue pair... connected to remote nid: %d pid: %d portals index: %d",
@@ -755,7 +756,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	ptl_conn_request->version = PTL_SPDK_PROTOCOL_VERSION;
 	ptl_conn_request->src_nid = ptl_cnxt_get_nid(ptl_cnxt);
 	ptl_conn_request->src_pid = ptl_cnxt_get_pid(ptl_cnxt);
-	ptl_conn_request->dst_pt_index =  PTL_CONTROL_PLANE_INITIATOR_MAILBOX;
+	ptl_conn_request->dst_pt_index =  PTL_PT_INDEX_INITIATOR_MAILBOX;
 
 
 	/* Setup target process identifier */
@@ -781,10 +782,10 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	SPDK_PTL_DEBUG("Event queue done. Creating mailbox for receiving target's reply at the initiator...");
 
 	rc = PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cnxt), 0, initiator_event_queue,
-			PTL_CONTROL_PLANE_INITIATOR_MAILBOX, &initiator_portal);
+			PTL_PT_INDEX_INITIATOR_MAILBOX, &initiator_portal);
 	if (rc != PTL_OK) {
 		SPDK_PTL_FATAL("Error allocating portal %d reason: %d",
-			       PTL_CONTROL_PLANE_INITIATOR_MAILBOX, rc);
+			       PTL_PT_INDEX_INITIATOR_MAILBOX, rc);
 	}
 	SPDK_PTL_DEBUG("Portals index done. Posting the receive buffer as a list entry...");
 	for (uint32_t i = 0; i < RDMA_PTL_CLIENT_MAILBOX_BUFFERS; i++) {
@@ -801,7 +802,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 		le.uid = PTL_UID_ANY;
 		le.options = PTL_SRV_ME_OPTS;
 
-		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_CONTROL_PLANE_INITIATOR_MAILBOX, &le,
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX_INITIATOR_MAILBOX, &le,
 				 PTL_PRIORITY_LIST, NULL, &reply);
 
 		if (rc != PTL_OK) {
@@ -827,14 +828,14 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 
 
 	SPDK_PTL_DEBUG("MD of the request done. Performing the actual PtlPut to targer nid:%d pid:%d portals_index: %d",
-		       target.phys.nid, target.phys.pid, PTL_CONTROL_PLANE_TARGET_MAILBOX);
+		       target.phys.nid, target.phys.pid, PTL_PT_INDEX_TARGET_MAILBOX);
 	/* Send connection info to server using PtlPut */
 	rc = PtlPut(md_handle,                    /* MD handle */
 		    0,                            /* local offset */
 		    sizeof(*ptl_conn_request),            /* length */
 		    PTL_ACK_REQ,                 /* acknowledgment requested */
 		    target,                      /* target process */
-		    PTL_CONTROL_PLANE_TARGET_MAILBOX,  /* portal table index */
+		    PTL_PT_INDEX_TARGET_MAILBOX,  /* portal table index */
 		    0,                   /* match bits */
 		    0,                           /* remote offset */
 		    NULL,                        /* user ptr */
@@ -845,7 +846,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	}
 
 	SPDK_PTL_DEBUG("Send connection request to target NID: %d PID: %d portals index: %d, waiting for completion...",
-		       target.phys.nid, target.phys.pid, PTL_CONTROL_PLANE_TARGET_MAILBOX);
+		       target.phys.nid, target.phys.pid, PTL_PT_INDEX_TARGET_MAILBOX);
 	/* Wait for until a I get a PtlPUT from the target*/
 	do {
 		rc = PtlEQWait(initiator_event_queue, &conn_response_event);
@@ -914,7 +915,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	ptl_process_t initiator = {.phys.nid = ptl_id->ptl_qp->remote_nid, .phys.pid = ptl_id->ptl_qp->remote_pid};
 
 	SPDK_PTL_DEBUG("[TARGET] Sending the accept message to initiator nid: %d pid: %d pt_index: %d",
-		       initiator.phys.nid, initiator.phys.pid, PTL_CONTROL_PLANE_INITIATOR_MAILBOX);
+		       initiator.phys.nid, initiator.phys.pid, PTL_PT_INDEX_INITIATOR_MAILBOX);
 
 	if (posix_memalign((void **)&conn_info_reply, 4096, sizeof(*conn_info_reply))) {
 		SPDK_PTL_FATAL("Failed to allocate memory");
@@ -941,7 +942,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 		    sizeof(*conn_info_reply),   // length to transfer
 		    PTL_ACK_REQ,         // request acknowledgment
 		    initiator,          // target process
-		    PTL_CONTROL_PLANE_INITIATOR_MAILBOX,            // portal table index at target
+		    PTL_PT_INDEX_INITIATOR_MAILBOX,            // portal table index at target
 		    0,          // match bits
 		    0,                   // remote offset
 		    NULL,                // user ptr (for events)
@@ -952,7 +953,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	}
   free(conn_info_reply);
 	SPDK_PTL_DEBUG("[TARGET] DONE: SENT the accept message to initiator nid: %d pid: %d pt_index: %d",
-		       initiator.phys.nid, initiator.phys.pid, PTL_CONTROL_PLANE_INITIATOR_MAILBOX);
+		       initiator.phys.nid, initiator.phys.pid, PTL_PT_INDEX_INITIATOR_MAILBOX);
 	return 0;
 }
 

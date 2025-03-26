@@ -11,12 +11,15 @@ struct ptl_conn_info {
 	int dst_pt_index;
   int dst_nid;
   int dst_pid;
+  size_t page_size;
+  size_t alignment_size;
 };
 
 struct ptl_conn_info_reply {
 	uint64_t version;
 	int status;
 	int pad;
-	uint64_t pad2[6];
+  size_t page_size;
+  size_t alignment_size;
 };
 #endif
