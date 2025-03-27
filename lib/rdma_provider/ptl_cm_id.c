@@ -25,7 +25,7 @@ struct ptl_cm_id *ptl_cm_id_create(struct rdma_cm_ptl_event_channel *ptl_channel
 	return ptl_id;
 }
 
-struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,struct ptl_cm_id *listen_id,
+struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id, struct ptl_cm_id *listen_id,
 		enum rdma_cm_event_type event_type, const void *private_data, size_t private_data_len)
 {
 
@@ -36,8 +36,10 @@ struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id,struct ptl
 		SPDK_PTL_FATAL("No memory!");
 	}
 	fake_event->id = &ptl_id->fake_cm_id;
-  if(listen_id)
-    fake_event->listen_id = &listen_id->fake_cm_id; 
+	fake_event->listen_id = (void*)0xFFFFFFFFFFFFFFFF;
+	if (listen_id) {
+		fake_event->listen_id = &listen_id->fake_cm_id;
+	}
 	fake_event->status = 0;
 	fake_event->event = event_type;
 	//original

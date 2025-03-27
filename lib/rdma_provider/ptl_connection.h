@@ -5,21 +5,18 @@
 
 struct ptl_conn_info {
 	uint64_t version;
+	struct sockaddr src_addr;
 	int src_nid;
 	int src_pid;
 	/*where client expects the reply*/
 	int dst_pt_index;
-  int dst_nid;
-  int dst_pid;
-  size_t page_size;
-  size_t alignment_size;
+	int dst_nid;
+	int dst_pid;
 };
 
 struct ptl_conn_info_reply {
 	uint64_t version;
 	int status;
 	int pad;
-  size_t page_size;
-  size_t alignment_size;
 };
 #endif

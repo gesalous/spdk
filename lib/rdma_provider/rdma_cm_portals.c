@@ -24,6 +24,41 @@
 #include <sys/eventfd.h>
 #include <sys/socket.h>
 #include <unistd.h>
+
+
+static struct sockaddr *rdma_cm_find_matching_local_ip(struct sockaddr *address,
+		struct sockaddr *result)
+{
+	struct ifaddrs *ifaddr, *ifa;
+
+	if (getifaddrs(&ifaddr) == -1) {
+		perror("getifaddrs, Reason");
+		SPDK_PTL_FATAL("Sorry");
+		return NULL;
+	}
+
+	struct sockaddr_in *dst = (struct sockaddr_in *)address;
+
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+		if (ifa->ifa_addr == NULL) { continue; }
+		if (ifa->ifa_addr->sa_family != AF_INET) { continue; }
+		if (ifa->ifa_flags & IFF_LOOPBACK) { continue; }
+
+		struct sockaddr_in *src = (struct sockaddr_in *)ifa->ifa_addr;
+		struct sockaddr_in *netmask = (struct sockaddr_in *)ifa->ifa_netmask;
+
+		if ((src->sin_addr.s_addr & netmask->sin_addr.s_addr) ==
+		    (dst->sin_addr.s_addr & netmask->sin_addr.s_addr)) {
+
+			memcpy(result, ifa->ifa_addr, sizeof(struct sockaddr));
+			goto exit;
+		}
+	}
+exit:
+	freeifaddrs(ifaddr);
+	return result;
+}
+
 /**
  * Used for faking connection setup
  */
@@ -49,6 +84,45 @@ static int rdma_ptl_add_in_connection_map(void)
 	return 0;
 }
 
+
+
+static bool rdma_ptl_print_sockaddr(const struct sockaddr *addr)
+{
+	char ip_str[INET6_ADDRSTRLEN];  // Big enough for both IPv4 and IPv6
+	uint16_t port;
+
+	if (!addr) {
+		SPDK_PTL_FATAL("NULL address");
+	}
+
+	// Handle based on address family
+	switch (addr->sa_family) {
+	case AF_INET: {
+		struct sockaddr_in *addr_in = (struct sockaddr_in *)addr;
+		inet_ntop(AF_INET, &(addr_in->sin_addr), ip_str, INET6_ADDRSTRLEN);
+		port = ntohs(addr_in->sin_port);
+		SPDK_PTL_DEBUG("IPv4 Address: %s, Port: %u", ip_str, port);
+		break;
+	}
+	case AF_INET6: {
+		struct sockaddr_in6 *addr_in6 = (struct sockaddr_in6 *)addr;
+		inet_ntop(AF_INET6, &(addr_in6->sin6_addr), ip_str, INET6_ADDRSTRLEN);
+		port = ntohs(addr_in6->sin6_port);
+		printf("IPv6 Address: %s, Port: %u, Flow Info: %u, Scope ID: %u\n",
+		       ip_str, port, addr_in6->sin6_flowinfo, addr_in6->sin6_scope_id);
+		break;
+	}
+	case AF_UNIX: {
+		struct sockaddr_un *addr_un = (struct sockaddr_un *)addr;
+		printf("Unix Domain Socket Path: %s\n", addr_un->sun_path);
+		break;
+	}
+	default:
+		SPDK_PTL_FATAL("Unknown address family: %d", addr->sa_family);
+	}
+	return true;
+}
+
 static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id,
 		struct ptl_conn_info *conn_info)
 {
@@ -59,6 +133,8 @@ static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id,
 	struct ptl_cq *ptl_cq = ptl_cq_get_instance(NULL);
 	struct ptl_conn_info new_conn = {.dst_nid = conn_info->src_nid, .dst_pid = conn_info->src_pid, .src_pid = conn_info->dst_pid, .src_nid = conn_info->dst_nid};
 
+	SPDK_PTL_DEBUG("This initiator wants to connect? %d",
+		       rdma_ptl_print_sockaddr(&conn_info->src_addr));
 
 	struct ptl_cm_id * ptl_id = ptl_cm_id_create(listen_id->ptl_channel, listen_id->ptl_context);
 
@@ -66,6 +142,10 @@ static void rdma_ptl_process_conn_request(struct ptl_cm_id *listen_id,
 	ptl_id->ptl_qp = ptl_qp;
 
 	ptl_id->fake_cm_id.qp = &ptl_qp->fake_qp;
+	memcpy(&ptl_id->fake_cm_id.route.addr.dst_addr, &conn_info->src_addr, sizeof(conn_info->src_addr));
+
+	rdma_cm_find_matching_local_ip(&ptl_id->fake_cm_id.route.addr.dst_addr,
+				       &ptl_id->fake_cm_id.route.addr.src_addr);
 	ptl_id->fake_cm_id.qp->qp_num = rdma_ptl_add_in_connection_map();
 
 
@@ -159,6 +239,9 @@ static void *rdma_ptl_cp_server(void *args)
 		conn_info = event.start;
 		SPDK_PTL_DEBUG("[TARGET] Received control plane message from NID: %d, PID: %d pt_index: %d\n",
 			       conn_info->src_nid, conn_info->src_pid, conn_info->dst_pt_index);
+
+
+
 		rdma_ptl_process_conn_request(listen_id, conn_info);
 
 		/* Re-register the receive buffer by appending a new list entry */
@@ -415,8 +498,9 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 
 int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr)
 {
-	SPDK_PTL_DEBUG("Trapped rdma_bind_addr FAKED it");
-	ptl_cm_id_get(id);
+	SPDK_PTL_DEBUG("Trapped rdma_bind_addr setting src addresss");
+	struct ptl_cm_id * ptl_id = ptl_cm_id_get(id);
+	memcpy(&id->route.addr.src_addr, addr, sizeof(*addr));
 
 	return 0;
 }
@@ -518,49 +602,11 @@ static void rdma_cm_print_addr_info(const char *prefix, struct sockaddr *addr)
 }
 
 
-
-
-static struct sockaddr *rdma_cm_find_matching_local_ip(struct sockaddr *dst_addr)
-{
-	struct ifaddrs *ifaddr, *ifa;
-	struct sockaddr *result = NULL;
-
-	if (getifaddrs(&ifaddr) == -1) {
-		perror("getifaddrs, Reason");
-		SPDK_PTL_FATAL("Sorry");
-		return NULL;
-	}
-
-	struct sockaddr_in *dst = (struct sockaddr_in *)dst_addr;
-
-	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
-		if (ifa->ifa_addr == NULL) { continue; }
-		if (ifa->ifa_addr->sa_family != AF_INET) { continue; }
-		if (ifa->ifa_flags & IFF_LOOPBACK) { continue; }
-
-		struct sockaddr_in *src = (struct sockaddr_in *)ifa->ifa_addr;
-		struct sockaddr_in *netmask = (struct sockaddr_in *)ifa->ifa_netmask;
-
-		if ((src->sin_addr.s_addr & netmask->sin_addr.s_addr) ==
-		    (dst->sin_addr.s_addr & netmask->sin_addr.s_addr)) {
-
-			// Allocate and copy the matching address
-			result = calloc(1UL, sizeof(struct sockaddr));
-			if (result == NULL) {
-				goto exit;
-			}
-			memcpy(result, ifa->ifa_addr, sizeof(struct sockaddr));
-			goto exit;
-		}
-	}
-exit:
-	freeifaddrs(ifaddr);
-	return result;
-}
-
 int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
 		      struct sockaddr *dst_addr, int timeout_ms)
 {
+	struct sockaddr resolve_src_addr;
+	struct sockaddr *resolve_src_addr_p;
 	struct rdma_cm_event *fake_event;
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 
@@ -583,17 +629,15 @@ int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
 					    src_addr->sa_family : dst_addr->sa_family;
 	id->route.addr.dst_addr.sa_family = dst_addr->sa_family;
 
-	struct sockaddr *resolve_src_addr =
-		src_addr ? src_addr : rdma_cm_find_matching_local_ip(dst_addr);
-
-	if (NULL == resolve_src_addr) {
-		rdma_cm_print_addr_info("DESTINATION IS:", dst_addr);
-		SPDK_PTL_FATAL("Could not find a local ip to match destination address");
+	resolve_src_addr_p = src_addr;
+	if (NULL == src_addr) {
+		rdma_cm_find_matching_local_ip(dst_addr, &resolve_src_addr);
+		resolve_src_addr_p = &resolve_src_addr;
 	}
 
-
-	if (NULL == src_addr) {
-		free(resolve_src_addr);
+	if (NULL == resolve_src_addr_p) {
+		rdma_cm_print_addr_info("DESTINATION IS:", dst_addr);
+		SPDK_PTL_FATAL("Could not find a local ip to match destination address");
 	}
 
 	SPDK_PTL_DEBUG("----------->   Resolved src addr   <--------------");
@@ -606,12 +650,63 @@ int rdma_resolve_addr(struct rdma_cm_id *id, struct sockaddr *src_addr,
 	return 0;
 }
 
+
 int rdma_resolve_route(struct rdma_cm_id *id, int timeout_ms)
 {
 	struct rdma_cm_event *fake_event;
-	SPDK_PTL_DEBUG("RESOLVE ROUTE");
-	// rdma_print_addr_info("SOURCE", src_addr);
-	// rdma_print_addr_info("DESTINATION", dst_addr);
+	struct ifaddrs *ifaddr, *ifa;
+	struct sockaddr *dst_addr = &id->route.addr.dst_addr;
+	struct sockaddr *src_addr = &id->route.addr.src_addr;
+	int family = dst_addr->sa_family;
+	int found = 0;
+	/*First given the dest address fill the src address*/
+
+
+	if (getifaddrs(&ifaddr) == -1) {
+		perror("getifaddrs failed");
+		SPDK_PTL_FATAL("Failed to get IP addresses");
+	}
+
+	SPDK_PTL_DEBUG("Looking for interfaces with family %d (AF_INET=%d, AF_INET6=%d)",
+		       family, AF_INET, AF_INET6);
+
+	for (ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
+		if (ifa->ifa_addr == NULL) {
+			continue;
+		}
+
+		// Skip if not the address family we're looking for
+		if (ifa->ifa_addr->sa_family != family) {
+			continue;
+		}
+
+		SPDK_PTL_DEBUG("Checking interface: %s", ifa->ifa_name);
+		SPDK_PTL_DEBUG("  Flags: 0x%x ", ifa->ifa_flags);
+
+
+		// Skip loopback
+		if (ifa->ifa_flags & IFF_LOOPBACK) {
+			printf("  Skipping loopback interface\n");
+			continue;
+		}
+
+		// Skip if interface is not up and running
+		if (!(ifa->ifa_flags & IFF_UP) || !(ifa->ifa_flags & IFF_RUNNING)) {
+			SPDK_PTL_DEBUG("  Skipping interface - not up/running");
+			continue;
+		}
+
+		// Copy the address
+		memcpy(src_addr, ifa->ifa_addr,
+		       (family == AF_INET) ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6));
+		found = 1;
+		break;
+	}
+
+	freeifaddrs(ifaddr);
+	if (false == found) {
+		SPDK_PTL_FATAL("Could not find a corresponding SRC IP address");
+	}
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	fake_event = ptl_cm_id_create_event(ptl_id, NULL, RDMA_CM_EVENT_ROUTE_RESOLVED, &private_data,
 					    sizeof(private_data));
@@ -700,7 +795,7 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 	}
 	conn_info.dst_nid = rdma_ptl_find_target_nid(id);
 	conn_info.dst_pid = PTL_TARGET_PID;
-  conn_info.dst_pt_index = PTL_PT_INDEX_TARGET_MAILBOX;
+	conn_info.dst_pt_index = PTL_PT_INDEX_TARGET_MAILBOX;
 	conn_info.src_nid = -1;
 	conn_info.src_pid = -1;
 	SPDK_PTL_DEBUG("Creating queue pair... connected to remote nid: %d pid: %d portals index: %d",
@@ -757,7 +852,11 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	ptl_conn_request->src_nid = ptl_cnxt_get_nid(ptl_cnxt);
 	ptl_conn_request->src_pid = ptl_cnxt_get_pid(ptl_cnxt);
 	ptl_conn_request->dst_pt_index =  PTL_PT_INDEX_INITIATOR_MAILBOX;
-
+	memcpy(&ptl_conn_request->src_addr, &id->route.addr.src_addr, sizeof(ptl_conn_request->src_addr));
+	// SPDK_PTL_DEBUG("Source address is");
+	// rdma_ptl_print_sockaddr(&id->route.addr.src_addr);
+	// SPDK_PTL_DEBUG("Destination address is");
+	// rdma_ptl_print_sockaddr(&id->route.addr.dst_addr);
 
 	/* Setup target process identifier */
 	ptl_conn_request->dst_nid = rdma_ptl_find_target_nid(id);
@@ -951,7 +1050,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	if (rc != PTL_OK) {
 		SPDK_PTL_FATAL("[TARGET] Failed to respond to conn info");
 	}
-  free(conn_info_reply);
+	free(conn_info_reply);
 	SPDK_PTL_DEBUG("[TARGET] DONE: SENT the accept message to initiator nid: %d pid: %d pt_index: %d",
 		       initiator.phys.nid, initiator.phys.pid, PTL_PT_INDEX_INITIATOR_MAILBOX);
 	return 0;
