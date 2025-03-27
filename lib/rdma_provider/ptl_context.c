@@ -26,8 +26,8 @@ typedef bool (*process_event)(ptl_event_t event, struct ibv_wc *wc);
 
 static bool ptl_cnxt_process_get(ptl_event_t event, struct ibv_wc *wc)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return true;
+	SPDK_PTL_DEBUG("Someone performed an RDMA READ from me, let's ignore it for now");
+	return false;
 }
 
 static bool ptl_cnxt_process_get_overflow(ptl_event_t event, struct ibv_wc *wc)
@@ -44,7 +44,7 @@ static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 	memset(wc, 0x00, sizeof(*wc));
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
-	wc->opcode = IBV_WC_RECV_RDMA_WITH_IMM;
+	wc->opcode = IBV_WC_RECV;
 	le_meta = event.user_ptr;
 	wc->wr_id = le_meta->wr_id;
 	wc->byte_len = event.mlength;
@@ -94,8 +94,16 @@ static bool ptl_cnxt_process_fetch_atomic_overflow(ptl_event_t event, struct ibv
 
 static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 {
-
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_REPLY even (RDMA read done). Number of bytes received: %lu. Filling wc with code %d event type: %d",
+		       event.mlength, event.ni_fail_type, event.type);
+	memset(wc, 0x00, sizeof(*wc));
+	wc->status =
+		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
+	wc->opcode = IBV_WC_RDMA_READ;
+	wc->wr_id = (uint64_t)event.user_ptr;
+	wc->byte_len = event.mlength;
+	wc->qp_num = 0;//Whatever
+	wc->src_qp = 0;
 	return true;
 }
 
@@ -109,7 +117,8 @@ static bool ptl_cnxt_process_send(ptl_event_t event, struct ibv_wc *wc)
 static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 {
 
-	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc with code %d event type: %d",event.ni_fail_type, event.type);
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc with code %d event type: %d",
+		       event.ni_fail_type, event.type);
 	memset(wc, 0x00, sizeof(*wc));
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
