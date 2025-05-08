@@ -392,7 +392,7 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 void
 spdk_rdma_utils_free_mem_map(struct spdk_rdma_utils_mem_map **_map)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	SPDK_PTL_FATAL("XXX TODO XXX UNIMPLEMENTED");
 	struct spdk_rdma_utils_mem_map *map;
 
 	if (!_map) {

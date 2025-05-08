@@ -24,6 +24,7 @@ WRAPPER_SRCS += deque.c
 WRAPPER_SRCS += ptl_cq.c
 WRAPPER_SRCS += ptl_pd.c
 WRAPPER_SRCS += ptl_qp.c
+WRAPPER_SRCS += ptl_srq.c
 WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
 
 # Add configurable Portals prefix

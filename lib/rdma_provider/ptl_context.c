@@ -39,19 +39,21 @@ static bool ptl_cnxt_process_get_overflow(ptl_event_t event, struct ibv_wc *wc)
 
 static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 {
-	struct ptl_context_le_metadata *le_meta;
-	SPDK_PTL_DEBUG("Got a PtlPut! Filling up wc");
-	memset(wc, 0x00, sizeof(*wc));
-	wc->status =
-		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
-	wc->opcode = IBV_WC_RECV;
-	le_meta = event.user_ptr;
-	wc->wr_id = le_meta->wr_id;
-	wc->byte_len = event.mlength;
-	wc->qp_num = 0;//Whatever
-	wc->src_qp = 0;
+	struct ptl_context_le_recv_op *le_recv_op;
 
-	return true;
+	if (NULL == event.user_ptr) {
+		SPDK_PTL_DEBUG("PtlPut (recv) has a null context, I should have got an RDMA_WRITE");
+		return false;
+	}
+
+	le_recv_op = event.user_ptr;
+	if (le_recv_op->obj_type != PTL_LE_METADATA) {
+		SPDK_PTL_FATAL("Corrupted type");
+	}
+
+	SPDK_PTL_DEBUG("Got a PtlPut it's a RECEIVE! Inform SPDK on UNLINK EVENT just mark the bytes received, proceed");
+	le_recv_op->bytes_received = event.mlength;
+	return false;
 }
 
 static bool ptl_cnxt_process_put_overflow(ptl_event_t event, struct ibv_wc *wc)
@@ -109,14 +111,17 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 
 static bool ptl_cnxt_process_send(ptl_event_t event, struct ibv_wc *wc)
 {
-	SPDK_PTL_DEBUG("Got a PTL_EVENT_SENT! Ignoring Portals internal");
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_SENT! Ignoring Portals internal user ptr (wr_id): %p",event.user_ptr);
 
 	return false;
 }
 
 static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 {
-
+	if (NULL == event.user_ptr) {
+		SPDK_PTL_DEBUG("PtlPut without context? App does not want any singnal");
+    return false;
+	}
 	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc with code %d event type: %d",
 		       event.ni_fail_type, event.type);
 	memset(wc, 0x00, sizeof(*wc));
@@ -124,7 +129,7 @@ static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
 	wc->opcode = IBV_WC_SEND;
 	wc->wr_id = (uint64_t)event.user_ptr;
-	wc->byte_len = 0;
+	wc->byte_len = event.mlength;
 	wc->qp_num = 0;//Whatever
 	wc->src_qp = 0;
 
@@ -140,9 +145,35 @@ static bool ptl_cnxt_process_bt_disabled(ptl_event_t event, struct ibv_wc *wc)
 
 static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
 {
+	SPDK_PTL_DEBUG("Got an UNLINK_EVENT! A receive buffer has been consumed from a prior PtlPut recv operation");
+	if (NULL == event.user_ptr) {
+		SPDK_PTL_FATAL("Unlink event must have an associated user context");
+	}
 
-	SPDK_PTL_DEBUG("Got an unlink event ok go on and ignore its Portals internal");
-	return false;
+	struct ptl_context_le_recv_op *le_recv_op = event.user_ptr;
+
+	if (le_recv_op->obj_type != PTL_LE_METADATA) {
+		SPDK_PTL_FATAL("Corrupted type");
+	}
+
+	memset(wc, 0x00, sizeof(*wc));
+	wc->status =
+		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
+	wc->opcode = IBV_WC_RECV;
+
+
+	wc->wr_id = le_recv_op->wr_id;
+
+	wc->byte_len = le_recv_op->bytes_received;
+	if (wc->byte_len != 64 && wc->byte_len != 16) {
+		SPDK_PTL_FATAL("Wrong size, should have been either 64 B (NVMe command "
+			       "size) or 16 B (NVMe response) size it is: %u",
+			       wc->byte_len);
+	}
+	wc->qp_num = 0;//Whatever
+	wc->src_qp = 0;
+	free(le_recv_op);
+	return true;
 }
 
 static bool ptl_cnxt_process_auto_free(ptl_event_t event, struct ibv_wc *wc)
@@ -251,6 +282,8 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 struct ptl_context *ptl_cnxt_get(void)
 {
 	static pthread_mutex_t cnxt_lock = PTHREAD_MUTEX_INITIALIZER;
+	ptl_ni_limits_t desired;
+	ptl_ni_limits_t actual;
 	int ret;
 	const char *srv_pid;
 	const char *srv_nid;
@@ -282,15 +315,30 @@ struct ptl_context *ptl_cnxt_get(void)
 	ptl_context.pid = atoi(srv_pid);
 	ptl_context.nid = atoi(srv_nid);
 
+	// memset(&desired, 0, sizeof(ptl_ni_limits_t));
+
+	// desired.max_waw_ordered_size = 4096UL;
+	// desired.max_war_ordered_size = 4096UL;
+
+	// desired.features = PTL_TOTAL_DATA_ORDERING;
 
 	ret = PtlNIInit((int)atoi(srv_nid), PTL_NI_MATCHING | PTL_NI_PHYSICAL,
-			(int)atoi(srv_pid), NULL, NULL, &ptl_context.ni_handle);
+			(int)atoi(srv_pid), NULL, &actual, &ptl_context.ni_handle);
 
 	if (ret != PTL_OK) {
 		SPDK_PTL_FATAL("RDMACM: PtlNIInit failed");
 	}
 
-	SPDK_PTL_DEBUG("Setting callbacl for ptl_cnxt_poll_cq");
+	// Check if PTL_TOTAL_DATA_ORDERING is supported
+	// if (actual.features & PTL_TOTAL_DATA_ORDERING) {
+	// 	SPDK_PTL_DEBUG("Total data ordering is enabled");
+	// } else {
+	// 	SPDK_PTL_FATAL("Total data ordering is not supported by this implementation. Cannot support NVMe-OF properties");
+	// }
+
+	SPDK_PTL_DEBUG("Actual max_waw_ordered_size: %zu bytes", actual.max_waw_ordered_size);
+	SPDK_PTL_DEBUG("Actual max_war_ordered_size: %zu bytes", actual.max_war_ordered_size);
+
 	ptl_context.fake_ibv_cnxt.ops.poll_cq = ptl_cnxt_poll_cq;
 	ptl_context.fake_cq.context = &ptl_context.fake_ibv_cnxt;
 
