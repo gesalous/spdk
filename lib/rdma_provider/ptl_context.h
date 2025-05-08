@@ -11,8 +11,10 @@ struct ptl_context;
 struct ibv_context;
 struct ibv_pd;
 
-struct ptl_context_le_metadata {
+struct ptl_context_le_recv_op {
+	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
+	uint32_t bytes_received;
 	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 

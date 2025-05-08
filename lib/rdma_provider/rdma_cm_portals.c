@@ -401,7 +401,11 @@ struct ibv_context **rdma_get_devices(int *num_devices)
 	return devices;
 }
 
-/* Subset of libverbs that Nida implements so nvmf target can boot*/
+/**
+ * ********************************************************************
+ * <Subset> of libverbs that Nida implements so nvmf target can operate
+ * ********************************************************************
+ **/
 int ibv_query_device(struct ibv_context *context,
 		     struct ibv_device_attr *device_attr)
 {
@@ -475,6 +479,33 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 //     SPDK_PTL_FATAL("UNIMPLEMENTED");
 //     return -1;
 // }
+
+struct ibv_srq *ibv_create_srq(struct ibv_pd *pd,
+			       struct ibv_srq_init_attr *srq_init_attr)
+{
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return NULL;
+}
+
+int ibv_modify_srq(struct ibv_srq *srq,
+		   struct ibv_srq_attr *srq_attr,
+		   int srq_attr_mask)
+{
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return 0;
+}
+
+
+int ibv_destroy_srq(struct ibv_srq *srq)
+{
+	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	return 0;
+}
+/**
+ * ********************************************************************
+ * </Subset> of libverbs that Nida implements so nvmf target can operate
+ * ********************************************************************
+ **/
 
 int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 		   void *context, enum rdma_port_space ps)
