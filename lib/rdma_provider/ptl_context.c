@@ -1,9 +1,10 @@
 #include "ptl_context.h"
 #include "lib/rdma_provider/ptl_config.h"
-#include "ptl_log.h"
 #include "ptl_cq.h"
+#include "ptl_log.h"
 #include "ptl_object_types.h"
 #include "ptl_pd.h"
+#include "ptl_uuid.h"
 #include <assert.h>
 #include <infiniband/verbs.h>
 #include <portals4.h>
@@ -39,7 +40,7 @@ static bool ptl_cnxt_process_get_overflow(ptl_event_t event, struct ibv_wc *wc)
 
 static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 {
-	struct ptl_context_le_recv_op *le_recv_op;
+	struct ptl_context_recv_op *le_recv_op;
 
 	if (NULL == event.user_ptr) {
 		SPDK_PTL_DEBUG("PtlPut (recv) has a null context, I should have got an RDMA_WRITE");
@@ -48,10 +49,15 @@ static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 
 	le_recv_op = event.user_ptr;
 	if (le_recv_op->obj_type != PTL_LE_METADATA) {
-		SPDK_PTL_FATAL("Corrupted type");
+		SPDK_PTL_FATAL("Corrupted event type: %d in Portals Table Entry (PTE) %d",le_recv_op->obj_type, event.pt_index);
 	}
 
-	SPDK_PTL_DEBUG("Got a PtlPut it's a RECEIVE! Inform SPDK on UNLINK EVENT just mark the bytes received, proceed");
+
+  SPDK_PTL_DEBUG("Got a PtlPut it's a RECEIVE! Inform target later on the corresponding UNLINK EVENT. Now, just mark the bytes received and proceed");
+  uint64_t match_bits = event.match_bits;
+  int initiator_qp_num =  ptl_uuid_get_target_qp_num(match_bits);
+  int target_qp_num = ptl_uuid_get_initiator_qp_num(match_bits);
+  SPDK_PTL_DEBUG("CP server the recv operation (match_bits = %lu) is between the pair initiator_qp_num = %d target_qp_num = %d", match_bits, initiator_qp_num, target_qp_num);
 	le_recv_op->bytes_received = event.mlength;
 	return false;
 }
@@ -150,7 +156,7 @@ static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
 		SPDK_PTL_FATAL("Unlink event must have an associated user context");
 	}
 
-	struct ptl_context_le_recv_op *le_recv_op = event.user_ptr;
+	struct ptl_context_recv_op *le_recv_op = event.user_ptr;
 
 	if (le_recv_op->obj_type != PTL_LE_METADATA) {
 		SPDK_PTL_FATAL("Corrupted type");
@@ -282,7 +288,7 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 struct ptl_context *ptl_cnxt_get(void)
 {
 	static pthread_mutex_t cnxt_lock = PTHREAD_MUTEX_INITIALIZER;
-	ptl_ni_limits_t desired;
+	// ptl_ni_limits_t desired;
 	ptl_ni_limits_t actual;
 	int ret;
 	const char *srv_pid;
@@ -293,7 +299,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	}
 
 	ptl_context.object_type = PTL_CONTEXT;
-	ptl_context.portals_idx_send_recv = PTL_PT_INDEX_SEND_RECV;
+	ptl_context.portals_idx_send_recv = PTL_PT_INDEX;
 	SPDK_PTL_DEBUG("Calling PtlInit()");
 	ret = PtlInit();
 	if (ret != PTL_OK) {

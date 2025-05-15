@@ -51,8 +51,8 @@ local:
 	return not_found;
 remote:
 	for (i = 0; i < ptl_pd->num_ptl_mem_desc; i++) {
-		if ((uint64_t)ptl_pd->ptl_mem_desc[i]->remote_wr_le.start <= address &&
-		    (uint64_t)end_address <= (uint64_t)ptl_pd->ptl_mem_desc[i]->remote_wr_le.start +
+		if ((uint64_t)ptl_pd->ptl_mem_desc[i]->remote_wr_me.start <= address &&
+		    (uint64_t)end_address <= (uint64_t)ptl_pd->ptl_mem_desc[i]->remote_wr_me.start +
 		    ptl_pd->ptl_mem_desc[i]->local_w_mem_desc.length) {
 			SPDK_PTL_DEBUG("Found *REMOTE* mem desc for portals!");
 			return ptl_pd->ptl_mem_desc[i];
