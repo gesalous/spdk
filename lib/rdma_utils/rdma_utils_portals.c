@@ -8,6 +8,7 @@
 #include "../rdma_provider/ptl_cq.h"
 #include "../rdma_provider/ptl_log.h"
 #include "../rdma_provider/ptl_pd.h"
+#include "../rdma_provider/ptl_uuid.h"
 #include "spdk/file.h"
 #include "spdk/likely.h"
 #include "spdk/log.h"
@@ -22,6 +23,7 @@
 #include <signal.h>
 #include <stdint.h>
 #include <stdlib.h>
+
 struct rdma_utils_device {
 	struct ibv_pd			*pd;
 	struct ibv_context		*context;
@@ -226,12 +228,14 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		}
 		SPDK_PTL_DEBUG("Memory registration for RMA operations requested....");
 
-		ptl_pd_mem_desc->remote_wr_le.start = 0;
-		ptl_pd_mem_desc->remote_wr_le.length = UINT64_MAX;
-		ptl_pd_mem_desc->remote_wr_le.uid = PTL_UID_ANY;
-		ptl_pd_mem_desc->remote_wr_le.match_bits  = 0;
-		ptl_pd_mem_desc->remote_wr_le.ignore_bits = 0;
-		ptl_pd_mem_desc->remote_wr_le.min_free    = 0;
+		ptl_pd_mem_desc->remote_wr_me.start = 0;
+		ptl_pd_mem_desc->remote_wr_me.length = UINT64_MAX;
+		ptl_pd_mem_desc->remote_wr_me.uid = PTL_UID_ANY;
+
+
+		ptl_pd_mem_desc->remote_wr_me.ignore_bits = PTL_UUID_IGNORE_MASK;
+		ptl_pd_mem_desc->remote_wr_me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_RMA);
+		ptl_pd_mem_desc->remote_wr_me.min_free    = 0;
 
 		ptl_pd_mem_desc->remote_read = rdma_utils_ptl_is_remote_read(access_flags);
 		ptl_pd_mem_desc->remote_write = rdma_utils_ptl_is_remote_write(access_flags);
@@ -241,23 +245,23 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		if (ret != PTL_OK) {
 			SPDK_PTL_FATAL("Failed to allocate counting event");
 		}
-		ptl_pd_mem_desc->remote_wr_le.ct_handle = ptl_pd_mem_desc->remote_rw_ct_handle;
-		ptl_pd_mem_desc->remote_wr_le.options = 0;
+		ptl_pd_mem_desc->remote_wr_me.ct_handle = ptl_pd_mem_desc->remote_rw_ct_handle;
+		ptl_pd_mem_desc->remote_wr_me.options = 0;
 		if (ptl_pd_mem_desc->remote_read) {
 			SPDK_PTL_DEBUG("Enabling READ access for the remote region as requested");
-			ptl_pd_mem_desc->remote_wr_le.options     |= PTL_ME_OP_GET;
+			ptl_pd_mem_desc->remote_wr_me.options     |= PTL_ME_OP_GET;
 		}
 		if (ptl_pd_mem_desc->remote_write) {
 			SPDK_PTL_DEBUG("Enabling WRITE access for the remote region as requested");
-			ptl_pd_mem_desc->remote_wr_le.options     |= PTL_ME_OP_PUT;
+			ptl_pd_mem_desc->remote_wr_me.options     |= PTL_ME_OP_PUT;
 		}
 
-		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX_RMA, &ptl_pd_mem_desc->remote_wr_le,
+		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX, &ptl_pd_mem_desc->remote_wr_me,
 				 PTL_PRIORITY_LIST, NULL, &ptl_pd_mem_desc->remote_rw_mem_handle);
 		if (rc != PTL_OK) {
 			SPDK_PTL_FATAL("PtlLEAppend failed with error code: %d", rc);
 		}
-		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &ptl_pd_mem_desc->remote_wr_le.ct_handle);
+		rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &ptl_pd_mem_desc->remote_wr_me.ct_handle);
 		if (PTL_OK != rc) {
 			SPDK_PTL_FATAL("Failed to allocate a counting event");
 		}

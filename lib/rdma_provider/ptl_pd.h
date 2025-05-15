@@ -12,7 +12,7 @@ struct spdk_rdma_utils_mem_map;
 
 struct ptl_pd_mem_desc {
 	ptl_md_t local_w_mem_desc;
-	ptl_le_t remote_wr_le;
+	ptl_me_t remote_wr_me;
 	ptl_handle_md_t local_w_mem_handle;
 	ptl_handle_md_t remote_rw_mem_handle;
 	ptl_handle_ct_t remote_rw_ct_handle;

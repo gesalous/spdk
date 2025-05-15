@@ -11,9 +11,11 @@
 #include <rdma/rdma_cma.h>
 #include <stdint.h>
 #include <sys/socket.h>
+
+
 struct ptl_cm_id {
 	ptl_obj_type_e object_type;
-	struct ptl_conn_info conn_info;
+	struct ptl_conn_msg conn_msg;
 	struct rdma_cm_ptl_event_channel *ptl_channel;
 	//This info is already kept in fake_cm_id set up during rdma_resolve().
 	// struct sockaddr src_addr;
@@ -25,6 +27,9 @@ struct ptl_cm_id {
 	struct ptl_cq *send_queue;
 	struct ptl_cq *recv_queue;
 	struct ptl_context *ptl_context;
+  uint64_t uuid;
+  int ptl_qp_num;
+  struct rdma_conn_param conn_param;
 	//needed for connection setup and shit
 	const void *fake_data;
 };

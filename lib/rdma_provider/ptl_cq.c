@@ -5,14 +5,13 @@
 #include "ptl_macros.h"
 #include "ptl_object_types.h"
 #include <portals4.h>
-
+#include <stdint.h>
 
 struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 {
 	static struct ptl_cq event_queue = {.lock = PTHREAD_MUTEX_INITIALIZER,
 						    .object_type = PTL_CQ
 	};
-
 	struct ptl_cq *ptl_cq;
 	int ret;
 	RDMA_CM_LOCK(&event_queue.lock);
@@ -33,22 +32,12 @@ struct ptl_cq *ptl_cq_get_instance(void *cq_context)
 	}
 	ret =
 		PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cq->ptl_context), 0,
-			   ptl_cq->eq_handle, PTL_PT_INDEX_SEND_RECV, &ptl_cq->ptl_context->portals_idx_send_recv);
+			   ptl_cq->eq_handle, PTL_PT_INDEX, &ptl_cq->ptl_context->portals_idx_send_recv);
 	if (ret != PTL_OK) {
 		SPDK_PTL_FATAL("PtlPTAlloc failed for SEND/RECV PORTALS INDEX");
 	}
-	SPDK_PTL_DEBUG("Allocated portals index: %u for SEND RECV operations",
+	SPDK_PTL_DEBUG("Allocated portals index: %u for *ALL* (send/recv/rma) operations",
 		       ptl_cq->ptl_context->portals_idx_send_recv);
-
-	ret =
-		PtlPTAlloc(ptl_cnxt_get_ni_handle(ptl_cq->ptl_context), 0,
-			   ptl_cq->eq_handle, PTL_PT_INDEX_RMA, &ptl_cq->ptl_context->portals_idx_rma);
-	if (ret != PTL_OK) {
-		SPDK_PTL_FATAL("PtlPTAlloc failed, for RDMA PORTALS INDEX");
-	}
-
-	SPDK_PTL_DEBUG("Allocated portals index: %u for RMA operations",
-		       ptl_cq->ptl_context->portals_idx_rma);
 
 	ptl_cq->cq_context = cq_context;
 
