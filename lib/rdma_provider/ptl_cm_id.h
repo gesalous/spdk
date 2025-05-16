@@ -27,9 +27,9 @@ struct ptl_cm_id {
 	struct ptl_cq *send_queue;
 	struct ptl_cq *recv_queue;
 	struct ptl_context *ptl_context;
-  uint64_t uuid;
-  int ptl_qp_num;
-  struct rdma_conn_param conn_param;
+	uint64_t uuid;
+	int ptl_qp_num;
+	struct rdma_conn_param conn_param;
 	//needed for connection setup and shit
 	const void *fake_data;
 };

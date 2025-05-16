@@ -18,11 +18,11 @@ struct ptl_conn_open {
 	int dst_pt_index;
 	int dst_nid;
 	int dst_pid;
-  int initiator_qp_num;
+	int initiator_qp_num;
 };
 
 struct ptl_conn_open_reply {
-	uint64_t uuid; 
+	uint64_t uuid;
 	int status;
 };
 

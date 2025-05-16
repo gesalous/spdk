@@ -53,7 +53,7 @@
     } \
 } while(0)
 
-
+volatile int is_target;
 
 static struct sockaddr *rdma_cm_find_matching_local_ip(struct sockaddr *address,
 		struct sockaddr *result)
@@ -240,8 +240,8 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	SPDK_PTL_DEBUG("[%s] Got an open connection request from: %d", ptl_control_plane_server.role,
 		       rdma_ptl_print_sockaddr(&conn_open->src_addr));
 	struct ptl_cm_id * ptl_id = ptl_cm_id_create(listen_id->ptl_channel, listen_id->ptl_context);
-  ptl_id->uuid = ptl_uuid_set_target_qp_num(ptl_id->uuid, ptl_id->ptl_qp_num); 
-  ptl_id->uuid = ptl_uuid_set_initiator_qp_num(ptl_id->uuid, conn_msg->conn_open.initiator_qp_num);
+	ptl_id->uuid = ptl_uuid_set_target_qp_num(ptl_id->uuid, ptl_id->ptl_qp_num);
+	ptl_id->uuid = ptl_uuid_set_initiator_qp_num(ptl_id->uuid, conn_msg->conn_open.initiator_qp_num);
 	SPDK_PTL_DEBUG("[%s] CP server: Created uuid: %lu", ptl_control_plane_server.role, ptl_id->uuid);
 
 	rdma_ptl_conn_map_add(ptl_id);
@@ -291,9 +291,10 @@ static void rdma_ptl_handle_open_conn_reply(struct ptl_cm_id *listen_id,
 			       open_conn_reply->status);
 	}
 
-  int qp_num = ptl_uuid_get_initiator_qp_num(conn_msg->conn_open_reply.uuid);
+	int qp_num = ptl_uuid_get_initiator_qp_num(conn_msg->conn_open_reply.uuid);
 	SPDK_PTL_DEBUG("[%s] CP server: Got open connection reply! connection id is: %lu initiator qp num: %d target qp num: %d",
-		       ptl_control_plane_server.role, open_conn_reply->uuid, qp_num, ptl_uuid_get_target_qp_num(conn_msg->conn_open_reply.uuid));
+		       ptl_control_plane_server.role, open_conn_reply->uuid, qp_num,
+		       ptl_uuid_get_target_qp_num(conn_msg->conn_open_reply.uuid));
 	connection_id = rdma_ptl_conn_map_find_from_qp_num(qp_num);
 	if (connection_id == NULL) {
 		SPDK_PTL_FATAL("[%s] CP server: Could not find connection with qp num: %d",
@@ -500,8 +501,8 @@ static void rdma_ptl_boot_cp_server(struct  ptl_cm_id *cm_id, const char *role)
 		SPDK_PTL_WARN("CP server for connections already running, nothing to boot");
 		goto exit;
 	}
-
 	ptl_control_plane_server.role = role;
+	is_target = strcmp("TARGET", role) == 0 ? 1 : 0;
 	ptl_control_plane_server.protocol_version = PTL_SPDK_PROTOCOL_VERSION;
 	ptl_control_plane_server.num_conn_info = PTL_CONTROL_PLANE_NUM_RECV_BUFFERS;
 	rc = posix_memalign((void **)&ptl_control_plane_server.recv_buffers, 4096,
@@ -1062,13 +1063,13 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 	SPDK_PTL_DEBUG("Creating queue pair... connected to remote nid: %d pid: %d portals index: %d",
 		       conn_open.dst_nid, conn_open.dst_pid, conn_open.dst_pt_index);
 	ptl_qp = ptl_qp_create(ptl_pd, send_queue, recv_queue, &conn_open);
-  ptl_qp->fake_qp.qp_num = ptl_id->ptl_qp_num;
+	ptl_qp->fake_qp.qp_num = ptl_id->ptl_qp_num;
 	/*Update cm_id*/
 	ptl_cm_id_set_ptl_qp(ptl_id, ptl_qp);
 	ptl_cm_id_set_ptl_pd(ptl_id, ptl_pd);
 	ptl_cm_id_set_send_queue(ptl_id, send_queue);
 	ptl_cm_id_set_recv_queue(ptl_id, recv_queue);
-  ptl_qp->ptl_cm_id = ptl_id;
+	ptl_qp->ptl_cm_id = ptl_id;
 
 
 
@@ -1113,7 +1114,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	send_buffer->conn_msg.conn_open.src_nid = ptl_cnxt_get_nid(ptl_cnxt);
 	send_buffer->conn_msg.conn_open.src_pid = ptl_cnxt_get_pid(ptl_cnxt);
 	send_buffer->conn_msg.conn_open.dst_pt_index =  PTL_CP_SERVER_PTE;
-  send_buffer->conn_msg.conn_open.initiator_qp_num = ptl_id->ptl_qp_num;
+	send_buffer->conn_msg.conn_open.initiator_qp_num = ptl_id->ptl_qp_num;
 	memcpy(&send_buffer->conn_msg.conn_open.src_addr, &id->route.addr.src_addr,
 	       sizeof(send_buffer->conn_msg.conn_open.src_addr));
 	// SPDK_PTL_DEBUG("Source address is");
