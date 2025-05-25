@@ -18,9 +18,9 @@ struct ptl_qp {
 	int remote_pid; /* pid for Portals*/
 	int remote_pt_index; /*Portals index for destination*/
 };
-
 struct ptl_qp *ptl_qp_create(struct ptl_pd *ptl_pd, struct ptl_cq *send_queue,
-			     struct ptl_cq *receive_queue, struct ptl_conn_open *conn_open);
+			     struct ptl_cq *receive_queue, struct ptl_conn_comm_pair_info *info);
+
 static inline struct ibv_qp *ptl_qp_get_ibv_qp(struct ptl_qp *ptl_qp)
 {
 	return &ptl_qp->fake_qp;

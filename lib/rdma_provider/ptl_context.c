@@ -49,13 +49,16 @@ static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 		SPDK_PTL_DEBUG("PtlPut (recv) has a null context, I should have got an RDMA_WRITE");
 		return false;
 	}
-
+	/*Note: Receive operations from the srq is of type PTL_LE_METADATA
+	 * (Target). For the initiator is the plain wr_id. We use the receive
+	 * length which is 16 bytes for the receive operations of the initiator
+	 * and 64 for the target. For now we do this just to avoid additional
+	 * calloc and free operations re-think about it.
+	 * */
 	le_recv_op = event.user_ptr;
-	if (le_recv_op->obj_type != PTL_LE_METADATA) {
-		SPDK_PTL_FATAL("Corrupted event type: %d in Portals Table Entry (PTE) %d", le_recv_op->obj_type,
-			       event.pt_index);
-	}
-
+  if(le_recv_op->obj_type != PTL_LE_RECV_OP){
+    SPDK_PTL_FATAL("Corrupted recv op");
+  }
 
 	SPDK_PTL_DEBUG("Got a PtlPut it's a RECEIVE!");
 	uint64_t match_bits = event.match_bits;
@@ -63,22 +66,31 @@ static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 	int target_qp_num = ptl_uuid_get_target_qp_num(match_bits);
 
 	memset(wc, 0x00, sizeof(*wc));
+
+	if (event.ni_fail_type != PTL_NI_OK) {
+		SPDK_PTL_FATAL("Operation failed");
+	}
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
 	wc->opcode = IBV_WC_RECV;
 
-
-	wc->wr_id = le_recv_op->wr_id;
 	wc->byte_len = event.mlength;
 	if (wc->byte_len != 64 && wc->byte_len != 16) {
 		SPDK_PTL_FATAL("Wrong size, should have been either 64 B (NVMe command "
 			       "size) or 16 B (NVMe response) size it is: %u",
 			       wc->byte_len);
 	}
+
+	wc->wr_id = le_recv_op->wr_id;
+
+
 	wc->qp_num = is_target ? target_qp_num : initiator_qp_num;
 	wc->src_qp = is_target ? initiator_qp_num : target_qp_num;
-	SPDK_PTL_DEBUG("CP server the recv operation (match_bits = %lu) is between the pair initiator_qp_num = %d target_qp_num = %d wc->qp_num: %d is target? %s",
-		       match_bits, initiator_qp_num, target_qp_num, wc->qp_num, is_target ? "YES" : "NO");
+	SPDK_PTL_DEBUG("CP server the recv operation (match_bits = %lu) is "
+		       "between the pair initiator_qp_num = %d target_qp_num = "
+		       "%d wc->qp_num: %d is target? %s size: %lu B",
+		       match_bits, initiator_qp_num, target_qp_num, wc->qp_num,
+		       is_target ? "YES" : "NO", event.mlength);
 
 	free(le_recv_op);
 	return true;
@@ -132,6 +144,11 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 	SPDK_PTL_DEBUG("CP server the recv operation (match_bits = %lu) is between the pair initiator_qp_num = %d target_qp_num = %d",
 		       event.match_bits, initiator_qp_num, target_qp_num);
 	memset(wc, 0x00, sizeof(*wc));
+
+	if (event.ni_fail_type != PTL_NI_OK) {
+		SPDK_PTL_FATAL("Operation failed with code: %d", event.ni_fail_type);
+	}
+
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
 	wc->opcode = IBV_WC_RDMA_READ;
@@ -144,34 +161,43 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 
 static bool ptl_cnxt_process_send(ptl_event_t event, struct ibv_wc *wc)
 {
-	SPDK_PTL_DEBUG("Got a PTL_EVENT_SENT! Ignoring Portals internal user ptr (wr_id): %p",
-		       event.user_ptr);
-
 	return false;
 }
 
 static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 {
+	struct ptl_context_send_op *send_op;
+
 	if (NULL == event.user_ptr) {
-		SPDK_PTL_DEBUG("PtlPut without context? App does not want any singnal");
+		SPDK_PTL_DEBUG("PtlPut without context? App does not want any signal");
 		return false;
 	}
-	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc with code %d event type: %d",
-		       event.ni_fail_type, event.type);
 
-	int initiator_qp_num =  ptl_uuid_get_initiator_qp_num(event.match_bits);
-	int target_qp_num = ptl_uuid_get_target_qp_num(event.match_bits);
-	SPDK_PTL_DEBUG("CP server the recv operation (match_bits = %lu) is between the pair initiator_qp_num = %d target_qp_num = %d",
-		       event.match_bits, initiator_qp_num, target_qp_num);
+	send_op = event.user_ptr;
+	if (send_op->obj_type != PTL_LE_SEND_OP) {
+		SPDK_PTL_FATAL("Corrupted object type this is not a PTL_LE_SEND_OP");
+	}
+
+	if (send_op->qp_num == 0) {
+		SPDK_PTL_FATAL("Nida does not assign 0 fake qp numbers");
+	}
+
+	SPDK_PTL_DEBUG("Got a PTL_EVENT_ACK event filling wc with code %d event type: %d from local qp num: %d",
+		       event.ni_fail_type, event.type, send_op->qp_num);
+
 	memset(wc, 0x00, sizeof(*wc));
+
+	if (event.ni_fail_type != PTL_NI_OK) {
+		SPDK_PTL_FATAL("Operation failed");
+	}
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
 	wc->opcode = IBV_WC_SEND;
-	wc->wr_id = (uint64_t)event.user_ptr;
+	wc->wr_id = send_op->wr_id;
 	wc->byte_len = event.mlength;
-	wc->qp_num = is_target ? target_qp_num : initiator_qp_num;
-	wc->src_qp = is_target ? initiator_qp_num : target_qp_num;
-
+	wc->qp_num = send_op->qp_num;
+	wc->src_qp = 0;//TOOO
+	free(send_op);
 	return true;
 }
 
@@ -273,6 +299,7 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 	int ret;
 	int events_processed = 0;
 
+
 	pthread_mutex_lock(&g_lock);
 	struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(ibv_cq);
 
@@ -280,7 +307,11 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 	while (events_processed < num_entries) {
 		ret = PtlEQGet(ptl_cq_get_queue(ptl_cq), &event);
 		if (ret == PTL_OK) {
-			events_processed += handler[event.type](event, &wc[events_processed]) ? 1 : 0;
+			if (false == handler[event.type](event, &wc[events_processed])) {
+				continue;
+			}
+			++events_processed;
+
 		} else if (ret == PTL_EQ_EMPTY) {
 			// SPDK_PTL_DEBUG("No events ok COOL");
 			break;
