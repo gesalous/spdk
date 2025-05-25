@@ -17,6 +17,13 @@ struct ptl_context_recv_op {
 	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 
+struct ptl_context_send_op {
+	ptl_obj_type_e obj_type;
+	uint64_t wr_id;
+  int qp_num;
+};
+
+
 
 struct ptl_context {
 	ptl_obj_type_e object_type;

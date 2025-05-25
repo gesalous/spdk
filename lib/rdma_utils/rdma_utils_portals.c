@@ -144,7 +144,39 @@ static inline bool rdma_utils_ptl_is_access_zero_based(uint32_t access_flags)
 	return ret;
 }
 
+static int
+rdma_utils_ptl_clean_mem_desc(struct ptl_pd_mem_desc *ptl_pd_mem_desc)
+{
+	int rc;
+	if (ptl_pd_mem_desc->local_write == false) {
+		goto remote;
+	}
+	SPDK_PTL_DEBUG("Cleaning up local write staff from ptl_pd_mem_desc %p", ptl_pd_mem_desc);
 
+	rc = PtlCTFree(ptl_pd_mem_desc->local_w_mem_desc.ct_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("Error freeing counting event with error code: %d\n", rc);
+	}
+	rc = PtlMDRelease(ptl_pd_mem_desc->local_w_mem_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("Failed with code: %d", rc);
+	}
+remote:
+	if (ptl_pd_mem_desc->remote_write || ptl_pd_mem_desc->remote_read) {
+		return 0;
+	}
+
+	SPDK_PTL_DEBUG("Cleaning up also remote read/write memory areas");
+	rc = PtlCTFree(ptl_pd_mem_desc->remote_rw_ct_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("Error freeing counting event with error code: %d\n", rc);
+	}
+	rc = PtlMEUnlink(ptl_pd_mem_desc->remote_rw_mem_handle);
+	if (rc != PTL_OK) {
+		SPDK_PTL_FATAL("Error freeing memory entry with error code: %d\n", rc);
+	}
+	return 0;
+}
 
 static int
 rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
@@ -178,7 +210,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	rdma_utils_ptl_is_remote_access_mw_bind(access_flags);
 	rdma_utils_ptl_is_access_zero_based(access_flags);
 
-	ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+	ptl_pd = ptl_pd_get_from_ibv_pd(rmap->pd);
 	ptl_cq = ptl_cq_get_instance(NULL);
 	ptl_context = ptl_cnxt_get_from_ibvpd(rmap->pd);
 	spdk_ptl_print_access_flags(access_flags);
@@ -195,7 +227,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 		}
 		access_flags = rmap->access_flags;
 #ifdef IBV_ACCESS_OPTIONAL_FIRST
-		SPDK_PTL_DEBUG("Unsupported staff XXX TODO XXX");
+		SPDK_PTL_DEBUG("CAUTION Unsupported staff XXX TODO XXX, ignore");
 		access_flags |= IBV_ACCESS_RELAXED_ORDERING;
 #endif
 		ptl_pd_mem_desc = calloc(1UL, sizeof(*ptl_pd_mem_desc));
@@ -218,6 +250,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 				SPDK_PTL_FATAL("Failed to register virtual addr %p of size: %lu",
 					       vaddr, size);
 			}
+			ptl_pd_mem_desc->local_write = true;
 		}
 
 		if (false == rdma_utils_ptl_is_remote_write(access_flags) &&
@@ -256,7 +289,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 			ptl_pd_mem_desc->remote_wr_me.options     |= PTL_ME_OP_PUT;
 		}
 
-		rc = PtlLEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX, &ptl_pd_mem_desc->remote_wr_me,
+		rc = PtlMEAppend(ptl_cnxt_get_ni_handle(ptl_cnxt), PTL_PT_INDEX, &ptl_pd_mem_desc->remote_wr_me,
 				 PTL_PRIORITY_LIST, NULL, &ptl_pd_mem_desc->remote_rw_mem_handle);
 		if (rc != PTL_OK) {
 			SPDK_PTL_FATAL("PtlLEAppend failed with error code: %d", rc);
@@ -289,14 +322,25 @@ done:
 		SPDK_PTL_DEBUG("DONE with memory registration in Portals");
 		break;
 	case SPDK_MEM_MAP_NOTIFY_UNREGISTER:
-		SPDK_PTL_FATAL("UNIMPLEMENTED");
+		ptl_pd_mem_desc = ptl_pd_get_mem_desc(ptl_pd, (uint64_t)vaddr, 0,
+						      rdma_utils_ptl_is_local_write(access_flags),
+						      rdma_utils_ptl_is_remote_read(access_flags) || rdma_utils_ptl_is_local_write(access_flags));
+		if (ptl_pd_mem_desc == NULL) {
+			SPDK_PTL_FATAL("Mem desc not found! (It should have)");
+		}
+
+		if (rdma_utils_ptl_clean_mem_desc(ptl_pd_mem_desc)) {
+			SPDK_PTL_FATAL("Failed to clean ptl_mem_desc");
+		}
 		if (rmap->hooks == NULL || rmap->hooks->get_rkey == NULL) {
 			mr = (struct ibv_mr *)spdk_mem_map_translate(map, (uint64_t)vaddr, NULL);
-			if (mr) {
-				ibv_dereg_mr(mr);
-			}
+			// if (mr) {
+			// 	ibv_dereg_mr(mr);
+			// }
 		}
 		rc = spdk_mem_map_clear_translation(map, (uint64_t)vaddr, size);
+		memset(ptl_pd_mem_desc, 0x00, sizeof(*ptl_pd_mem_desc));
+		SPDK_PTL_DEBUG("Cleaned memory area!");
 		break;
 	default:
 		SPDK_UNREACHABLE();
@@ -396,7 +440,7 @@ spdk_rdma_utils_create_mem_map(struct ibv_pd *pd, struct spdk_nvme_rdma_hooks *h
 void
 spdk_rdma_utils_free_mem_map(struct spdk_rdma_utils_mem_map **_map)
 {
-	SPDK_PTL_FATAL("XXX TODO XXX UNIMPLEMENTED");
+	SPDK_PTL_DEBUG("CAUTION XXX TODO XXX ?");
 	struct spdk_rdma_utils_mem_map *map;
 
 	if (!_map) {
@@ -466,7 +510,7 @@ int spdk_rdma_utils_get_translation(
 static struct rdma_utils_device *
 rdma_add_dev(struct ibv_context *context)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	SPDK_PTL_DEBUG("CAUTION UNIMPLEMENTED XXX TODO XXX");
 	struct rdma_utils_device *dev;
 
 	dev = calloc(1, sizeof(*dev));
@@ -491,7 +535,7 @@ rdma_add_dev(struct ibv_context *context)
 static void
 rdma_remove_dev(struct rdma_utils_device *dev)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	SPDK_PTL_DEBUG("CAUTION: Default code of rdma_remove_dev XXX TODO XXX");
 	if (!dev->removed || dev->ref > 0) {
 		return;
 	}
@@ -517,7 +561,7 @@ ctx_cmp(const void *_c1, const void *_c2)
 static int
 rdma_sync_dev_list(void)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	SPDK_PTL_DEBUG("CAUTION UNIMPLEMENTED XXX TODO XXX");
 	struct ibv_context **new_ctx_list;
 	int i, j;
 	int num_devs = 0;
@@ -626,7 +670,8 @@ spdk_rdma_utils_get_pd(struct ibv_context *context)
 void
 spdk_rdma_utils_put_pd(struct ibv_pd *pd)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	struct ptl_pd *ptl_pd = ptl_pd_get_from_ibv_pd(pd);
+	SPDK_PTL_DEBUG("UNIMPLEMENTED XXX TODO XXX, using the default pd is ok ptl_pd: %p", ptl_pd);
 	struct rdma_utils_device *dev, *tmp;
 
 	pthread_mutex_lock(&g_dev_mutex);
@@ -648,7 +693,7 @@ spdk_rdma_utils_put_pd(struct ibv_pd *pd)
 __attribute__((destructor)) static void
 _rdma_utils_fini(void)
 {
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
+	SPDK_PTL_DEBUG("CAUTION: fini is the default XXX TODO XXX");
 	struct rdma_utils_device *dev, *tmp;
 
 	TAILQ_FOREACH_SAFE(dev, &g_dev_list, tailq, tmp) {
