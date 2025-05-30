@@ -35,7 +35,7 @@
 
 
 #define PTL_SRV_ME_OPTS                                                                                                 \
-	PTL_ME_OP_PUT | PTL_ME_EVENT_LINK_DISABLE | PTL_ME_MAY_ALIGN | PTL_ME_IS_ACCESSIBLE | PTL_ME_MANAGE_LOCAL | \
+	PTL_ME_OP_PUT | PTL_ME_EVENT_LINK_DISABLE | PTL_ME_MAY_ALIGN | PTL_ME_IS_ACCESSIBLE | /*PTL_ME_MANAGE_LOCAL |*/ \
 		PTL_ME_NO_TRUNCATE | PTL_LE_USE_ONCE
 
 #define PTL_IOVEC_SIZE 2

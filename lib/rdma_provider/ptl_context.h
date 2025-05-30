@@ -2,9 +2,9 @@
 #define PTL_CONTEXT_H
 #include "portals4.h"
 #include "ptl_object_types.h"
+#include <include/spdk/nvme_spec.h>
 #include <infiniband/verbs.h>
 #include <stdbool.h>
-
 #define PTL_CONTEXT_SERVER_PID 0
 #define PTL_IOVEC_SIZE 2
 struct ptl_context;
@@ -14,6 +14,9 @@ struct ibv_pd;
 struct ptl_context_recv_op {
 	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
+  uint64_t bytes_received;
+  int initiator_qp_num;
+  int target_qp_num;
 	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 
