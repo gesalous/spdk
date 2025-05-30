@@ -20,17 +20,21 @@ struct ptl_conn_comm_pair_info{
 struct ptl_conn_msg_header {
 	ptl_conn_msg_type_e msg_type;
 	uint64_t version;
+  /*Due to rdma conn_param not all messages are of fixed size*/
+  uint64_t total_msg_size; 
   struct ptl_conn_comm_pair_info peer_info;
 };
 
 struct ptl_conn_open {
 	struct sockaddr src_addr;
   int initiator_qp_num;
+  struct rdma_conn_param conn_param;
 };
 
 struct ptl_conn_open_reply {
 	uint64_t uuid;
 	int status;
+  struct rdma_conn_param conn_param;
 };
 
 struct ptl_conn_close {

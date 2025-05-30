@@ -12,6 +12,14 @@
 #include <stdint.h>
 #include <sys/socket.h>
 
+typedef enum {
+  PTL_CM_DISCONNECTING = 0,
+  PTL_CM_DISCONNECTED,
+  PTL_CM_CONNECTING,
+  PTL_CM_CONNECTED,
+  PTL_CM_UNCONNECTED,
+  PTL_CM_GUARD
+} ptl_cm_id_e;
 
 struct ptl_cm_id {
 	ptl_obj_type_e object_type;
@@ -28,6 +36,7 @@ struct ptl_cm_id {
 	struct ptl_cq *recv_queue;
 	struct ptl_context *ptl_context;
 	uint64_t uuid;
+  ptl_cm_id_e cm_id_state;
 	int ptl_qp_num;
 	struct rdma_conn_param conn_param;
 	//needed for connection setup and shit
@@ -47,10 +56,8 @@ static inline struct ptl_cm_id *ptl_cm_id_get(struct rdma_cm_id *id)
 	}
 	return ptl_id;
 }
-
-
 struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id, struct ptl_cm_id *listen_id,
-		enum rdma_cm_event_type event_type, const void *private_data, size_t private_data_len);
+		enum rdma_cm_event_type event_type);
 
 
 void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
