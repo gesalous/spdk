@@ -24,9 +24,9 @@ struct ptl_cm_id *ptl_cm_id_create(struct rdma_cm_ptl_event_channel *ptl_channel
 	ptl_id->fake_cm_id.context = context;
 	ptl_context = ptl_cnxt_get();
 	ptl_id->fake_cm_id.verbs = ptl_cnxt_get_ibv_context(ptl_context);
-  ptl_id->fake_cm_id.ps = RDMA_PS_TCP;
+	ptl_id->fake_cm_id.ps = RDMA_PS_TCP;
 	ptl_id->ptl_qp_num = ptl_local_qp_num++;
-  ptl_id->cm_id_state = PTL_CM_UNCONNECTED;
+	ptl_id->cm_id_state = PTL_CM_UNCONNECTED;
 	SPDK_PTL_DEBUG("CAUTION: SUCCESSFULLY created PTL_ID: %p", ptl_id);
 	return ptl_id;
 }
@@ -51,12 +51,13 @@ struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id, struct pt
 	//original
 	// fake_event->param.conn.private_data = ptl_id->fake_data;
 	/*rdma_cm library uses the private_data field to negotiate a new connection*/
-  fake_event->param.conn = ptl_id->conn_param;
-  if(ptl_id->conn_param.private_data){
-    SPDK_PTL_DEBUG("CONN_PARAM: setting connection params for this event");
-    fake_event->param.conn.private_data = calloc(1UL, fake_event->param.conn.private_data_len);
-    memcpy((void *)fake_event->param.conn.private_data, ptl_id->conn_param.private_data, fake_event->param.conn.private_data_len);
-  }
+	fake_event->param.conn = ptl_id->conn_param;
+	if (ptl_id->conn_param.private_data) {
+		SPDK_PTL_DEBUG("CONN_PARAM: setting connection params for this event");
+		fake_event->param.conn.private_data = calloc(1UL, fake_event->param.conn.private_data_len);
+		memcpy((void *)fake_event->param.conn.private_data, ptl_id->conn_param.private_data,
+		       fake_event->param.conn.private_data_len);
+	}
 	// fake_event->param.conn.private_data = private_data;
 	// fake_event->param.conn.private_data_len = private_data_len;
 	// fake_event->param.conn.initiator_depth = 32;
@@ -74,7 +75,7 @@ void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
 	    deque_push_front(ptl_id->ptl_channel->events_deque, event)) {
 		SPDK_PTL_FATAL("Failed to queue fake event");
 	}
-	SPDK_PTL_DEBUG(" ********* Added event of type: %d", event->event);
+	// SPDK_PTL_DEBUG(" (nikos) ********* Added event of type: %d for qp_num: %d and channel %p", event->event, ptl_id->ptl_qp_num, ptl_id->ptl_channel);
 	uint64_t result;
 	if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
 		perror("read");

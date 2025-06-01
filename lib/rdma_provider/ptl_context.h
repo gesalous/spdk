@@ -14,16 +14,16 @@ struct ibv_pd;
 struct ptl_context_recv_op {
 	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
-  uint64_t bytes_received;
-  int initiator_qp_num;
-  int target_qp_num;
+	uint64_t bytes_received;
+	int initiator_qp_num;
+	int target_qp_num;
 	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 
 struct ptl_context_send_op {
 	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
-  int qp_num;
+	int qp_num;
 };
 
 

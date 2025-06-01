@@ -18,7 +18,7 @@ struct ptl_pd_mem_desc {
 	ptl_handle_ct_t remote_rw_ct_handle;
 	bool remote_read;
 	bool remote_write;
-  bool local_write;
+	bool local_write;
 	bool is_valid;
 };
 
@@ -67,7 +67,7 @@ static inline struct ptl_pd *ptl_pd_get_from_ibv_pd(struct ibv_pd *ib_pd)
 {
 	struct ptl_pd *ptl_pd = SPDK_CONTAINEROF(ib_pd, struct ptl_pd, fake_pd);
 	if (PTL_PD != ptl_pd->object_type) {
-		SPDK_PTL_FATAL("Corrupted ptl_pd expected: %d got %d",PTL_PD, ptl_pd->object_type);
+		SPDK_PTL_FATAL("Corrupted ptl_pd expected: %d got %d", PTL_PD, ptl_pd->object_type);
 	}
 	return ptl_pd;
 }
