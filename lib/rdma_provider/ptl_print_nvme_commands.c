@@ -71,11 +71,11 @@ void ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix)
 	}
 
 	SPDK_PTL_DEBUG("%s: command opcode: 0x%02x  human-readable: %s", prefix, cmd->opc, command);
-	SPDK_PTL_DEBUG("%s: NSID: %u",prefix, cmd->nsid);
-	SPDK_PTL_DEBUG("%s: CID: %u",prefix, cmd->cid);
+	SPDK_PTL_DEBUG("%s: NSID: %u", prefix, cmd->nsid);
+	SPDK_PTL_DEBUG("%s: CID: %u", prefix, cmd->cid);
 	SPDK_PTL_DEBUG("%s:  FUSE: %u", prefix, cmd->fuse);
-	SPDK_PTL_DEBUG("%s:  PSDT: %u\n",prefix, cmd->psdt);
-	SPDK_PTL_DEBUG("%s:  CDW10-15: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x",prefix,
+	SPDK_PTL_DEBUG("%s:  PSDT: %u\n", prefix, cmd->psdt);
+	SPDK_PTL_DEBUG("%s:  CDW10-15: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x", prefix,
 		       cmd->cdw10, cmd->cdw11, cmd->cdw12, cmd->cdw13, cmd->cdw14, cmd->cdw15);
 }
 
@@ -112,7 +112,7 @@ void ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix)
 	}
 
 	SPDK_PTL_DEBUG("%s:  Phase: %u", prefix, cpl->status.p);
-	SPDK_PTL_DEBUG("%s:  CID: %u", prefix,cpl->cid);
+	SPDK_PTL_DEBUG("%s:  CID: %u", prefix, cpl->cid);
 	SPDK_PTL_DEBUG("%s:  SQID: %u", prefix, cpl->sqid);
 	SPDK_PTL_DEBUG("%s:  SQHD: %u", prefix, cpl->sqhd);
 	SPDK_PTL_DEBUG("%s:  Result Data: 0x%08x", prefix, cpl->cdw0);

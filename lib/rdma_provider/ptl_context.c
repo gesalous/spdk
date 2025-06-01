@@ -64,13 +64,13 @@ static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc)
 	}
 
 
-  if(event.start != recv_op->io_vector){
-                SPDK_PTL_FATAL(
-                    "Corrupted receive event.start: %p event.legnth: %lu "
-                    "iovector[0] = %p iovector size[0] = %lu pte: %d",
-                    event.start, event.rlength, recv_op->io_vector[0].iov_base,
-                    recv_op->io_vector[0].iov_len, event.pt_index);
-  }
+	if (event.start != recv_op->io_vector) {
+		SPDK_PTL_FATAL(
+			"Corrupted receive event.start: %p event.legnth: %lu "
+			"iovector[0] = %p iovector size[0] = %lu pte: %d",
+			event.start, event.rlength, recv_op->io_vector[0].iov_base,
+			recv_op->io_vector[0].iov_len, event.pt_index);
+	}
 
 	recv_op->initiator_qp_num =  ptl_uuid_get_initiator_qp_num(event.match_bits);
 	recv_op->target_qp_num = ptl_uuid_get_target_qp_num(event.match_bits);
@@ -125,12 +125,12 @@ static bool ptl_cnxt_process_fetch_atomic_overflow(ptl_event_t event, struct ibv
 
 static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 {
-  struct ptl_context_send_op *rdma_read_op;
+	struct ptl_context_send_op *rdma_read_op;
 
-  if(event.user_ptr == NULL){
-    SPDK_PTL_DEBUG("Caution RDMA read without a context app does not want a signal ok.");
-    return false;
-  } 
+	if (event.user_ptr == NULL) {
+		SPDK_PTL_DEBUG("Caution RDMA read without a context app does not want a signal ok.");
+		return false;
+	}
 
 	memset(wc, 0xFF, sizeof(*wc));
 
@@ -139,14 +139,14 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 	}
 
 
-  rdma_read_op = event.user_ptr;
-  if(rdma_read_op->obj_type != PTL_SEND_OP){
-    SPDK_PTL_FATAL("Corrupted object");
-  }
+	rdma_read_op = event.user_ptr;
+	if (rdma_read_op->obj_type != PTL_SEND_OP) {
+		SPDK_PTL_FATAL("Corrupted object");
+	}
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;
 	wc->opcode = IBV_WC_RDMA_READ;
-	wc->wr_id = rdma_read_op->wr_id; 
+	wc->wr_id = rdma_read_op->wr_id;
 	wc->byte_len = event.rlength;
 	wc->qp_num = rdma_read_op->qp_num;
 
@@ -157,7 +157,7 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc)
 	SPDK_PTL_DEBUG("NVMe: RDMA read done (PTL_EVENT_REPLY). Number of bytes received: %lu. Filling wc with code %d qp_num: %d",
 		       event.rlength, event.ni_fail_type, rdma_read_op->qp_num);
 
-  free(rdma_read_op);
+	free(rdma_read_op);
 	return true;
 }
 
@@ -223,10 +223,10 @@ static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
 
 	recv_op = event.user_ptr;
 
-  if(recv_op->obj_type != PTL_RECV_OP){
-    SPDK_PTL_FATAL("Corrupted recv_op");
-  }
-	SPDK_PTL_DEBUG("NVMe RECV (PtlPut+AUTO_UNLINK) operation is "
+	if (recv_op->obj_type != PTL_RECV_OP) {
+		SPDK_PTL_FATAL("Corrupted recv_op");
+	}
+	SPDK_PTL_DEBUG("NVMe-cmd-recv: RECV (PtlPut+AUTO_UNLINK) operation is "
 		       "between the pair initiator_qp_num = %d target_qp_num = "
 		       "%d is target? %s size: %lu B. Going to notify in the "
 		       "corresponding AUTO_UNLINK operation",
@@ -234,11 +234,11 @@ static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
 		       recv_op->target_qp_num, is_target ? "YES" : "NO",
 		       recv_op->bytes_received);
 
-  if(recv_op->bytes_received == 64){
-    ptl_print_nvme_cmd(recv_op->io_vector[0].iov_base, "NVMe-cmd-recv");
-  }else{
-    ptl_print_nvme_cpl(recv_op->io_vector[0].iov_base, "NVMe-cpl-recv");
-  }
+	if (recv_op->bytes_received == 64) {
+		ptl_print_nvme_cmd(recv_op->io_vector[0].iov_base, "NVMe-cmd-recv");
+	} else {
+		ptl_print_nvme_cpl(recv_op->io_vector[0].iov_base, "NVMe-cpl-recv");
+	}
 	memset(wc, 0x00, sizeof(*wc));
 
 	if (event.ni_fail_type != PTL_NI_OK) {

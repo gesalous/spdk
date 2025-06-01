@@ -13,12 +13,12 @@
 #include <sys/socket.h>
 
 typedef enum {
-  PTL_CM_DISCONNECTING = 0,
-  PTL_CM_DISCONNECTED,
-  PTL_CM_CONNECTING,
-  PTL_CM_CONNECTED,
-  PTL_CM_UNCONNECTED,
-  PTL_CM_GUARD
+	PTL_CM_DISCONNECTING = 0,
+	PTL_CM_DISCONNECTED,
+	PTL_CM_CONNECTING,
+	PTL_CM_CONNECTED,
+	PTL_CM_UNCONNECTED,
+	PTL_CM_GUARD
 } ptl_cm_id_e;
 
 struct ptl_cm_id {
@@ -36,7 +36,7 @@ struct ptl_cm_id {
 	struct ptl_cq *recv_queue;
 	struct ptl_context *ptl_context;
 	uint64_t uuid;
-  ptl_cm_id_e cm_id_state;
+	ptl_cm_id_e cm_id_state;
 	int ptl_qp_num;
 	struct rdma_conn_param conn_param;
 	//needed for connection setup and shit

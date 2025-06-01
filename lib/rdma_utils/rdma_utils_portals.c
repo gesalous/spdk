@@ -527,6 +527,7 @@ rdma_add_dev(struct ibv_context *context)
 	}
 
 	dev->context = context;
+  dev->ref++;
 	TAILQ_INSERT_TAIL(&g_dev_list, dev, tailq);
 
 	return dev;
