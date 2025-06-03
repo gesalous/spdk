@@ -10,7 +10,6 @@
 struct ptl_context;
 struct ibv_context;
 struct ibv_pd;
-
 struct ptl_context_recv_op {
 	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
@@ -61,6 +60,9 @@ static inline int ptl_cnxt_get_pid(struct ptl_context *cnxt)
 {
 	return cnxt->pid;
 }
+
+
+
 
 #endif
 

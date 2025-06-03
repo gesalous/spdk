@@ -66,7 +66,6 @@ spdk_rdma_provider_srq_create(struct spdk_rdma_provider_srq_init_attr *init_attr
 	portals_srq->ptl_context = ptl_context;
 	fake_rdma_srq = &portals_srq->fake_srq;
 
-
 	if (init_attr->stats) {
 		fake_rdma_srq->stats = init_attr->stats;
 		fake_rdma_srq->shared_stats = true;
@@ -79,10 +78,10 @@ spdk_rdma_provider_srq_create(struct spdk_rdma_provider_srq_init_attr *init_attr
 		}
 	}
 
-	// rdma_srq->srq = ibv_create_srq(init_attr->pd, &init_attr->srq_init_attr);
 	struct ptl_pd *ptl_pd = ptl_pd_get_from_ibv_pd(init_attr->pd);
 	struct ptl_srq * ptl_srq = ptl_create_srq(ptl_pd, &init_attr->srq_init_attr);
 	fake_rdma_srq->srq = &ptl_srq->fake_srq;
+
 	// if (!rdma_srq->srq) {
 	// 	if (!init_attr->stats) {
 	// 		free(rdma_srq->stats);
@@ -416,16 +415,17 @@ spdk_rdma_provider_qp_accept(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	assert(spdk_rdma_qp != NULL);
 	assert(spdk_rdma_qp->cm_id != NULL);
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(spdk_rdma_qp->cm_id);
-	SPDK_PTL_DEBUG("CONN_PARAM: At accept got a valid ptl_id queue pair id: %d conn_param len: %u", ptl_id->fake_cm_id.qp->qp_num,conn_param->private_data_len);
+	SPDK_PTL_DEBUG("CONN_PARAM: At accept got a valid ptl_id queue pair id: %d conn_param len: %u",
+		       ptl_id->fake_cm_id.qp->qp_num, conn_param->private_data_len);
 
-  SPDK_ERRLOG("GESALOUSTRA: CONN_PARAM sending to the target the following shit\n");
-  SPDK_ERRLOG("GESALOUSTRA: CONN_PARAM param.srq = %u param.qp_num = %u "
-              "param.rnr_retry_count = %u param.responder_resources: %u "
-              "param.initiator_depth: %u param.flow_control: %u "
-              "param.private_data_len: %u\n",
-              conn_param->srq, conn_param->qp_num, conn_param->rnr_retry_count,
-              conn_param->responder_resources, conn_param->initiator_depth,
-              conn_param->flow_control, conn_param->private_data_len);
+	SPDK_ERRLOG("GESALOUSTRA: CONN_PARAM sending to the target the following shit\n");
+	SPDK_ERRLOG("GESALOUSTRA: CONN_PARAM param.srq = %u param.qp_num = %u "
+		    "param.rnr_retry_count = %u param.responder_resources: %u "
+		    "param.initiator_depth: %u param.flow_control: %u "
+		    "param.private_data_len: %u\n",
+		    conn_param->srq, conn_param->qp_num, conn_param->rnr_retry_count,
+		    conn_param->responder_resources, conn_param->initiator_depth,
+		    conn_param->flow_control, conn_param->private_data_len);
 	return rdma_accept(spdk_rdma_qp->cm_id, conn_param);
 }
 
@@ -465,7 +465,7 @@ spdk_rdma_provider_qp_disconnect(struct spdk_rdma_provider_qp *spdk_rdma_qp)
 
 	assert(spdk_rdma_qp != NULL);
 	SPDK_PTL_DEBUG("Calling disconnect for the queue pair...");
-  spdk_rdma_provider_qp_flush_send_wrs(spdk_rdma_qp,NULL);
+	spdk_rdma_provider_qp_flush_send_wrs(spdk_rdma_qp, NULL);
 
 	if (spdk_rdma_qp->cm_id) {
 		rc = rdma_disconnect(spdk_rdma_qp->cm_id);
@@ -652,7 +652,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 {
 
 	assert(spdk_rdma_qp);
-	assert(bad_wr);
+	// assert(bad_wr);
 	int rc;
 	uint64_t match_bits;
 	struct ptl_qp *ptl_qp = ptl_qp_get_from_ibv_qp(spdk_rdma_qp->qp);
@@ -695,12 +695,12 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				SPDK_PTL_FATAL("MEM desc not found!");
 			}
 
-      if(wr->sg_list[0].length == 64){
-        ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)wr->sg_list[i].addr, "NVMe-cmd-send");
-      } 
-      if(wr->sg_list[0].length == 16){
-        ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)wr->sg_list[i].addr, "NVMe-cpl-send");
-      }
+			if (wr->sg_list[0].length == 64) {
+				ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)wr->sg_list[i].addr, "NVMe-cmd-send");
+			}
+			if (wr->sg_list[0].length == 16) {
+				ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)wr->sg_list[i].addr, "NVMe-cpl-send");
+			}
 
 			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc->local_w_mem_desc.start;
 
@@ -713,12 +713,20 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				send_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
 			}
 
-			SPDK_PTL_DEBUG("NVMe: Performing a SEND (PtlPut) operation to nid: %d pid: %d pt_index: %d match bits set to %lu local_offset: %lu is it signaled?: %s",
-				       target.phys.nid,
-				       target.phys.pid, ptl_qp->remote_pt_index, ptl_uuid_set_op_type(match_bits, PTL_SEND_RECV),
-				       local_offset, send_op ? "YES" : "NO");
+      SPDK_PTL_DEBUG(
+          "%s: Performing a SEND (PtlPut) operation to nid: "
+          "%d pid: %d pt_index: %d initiator qp_num: %d "
+          "target qp_num: %d local_offset: %lu is it "
+          "signaled?: %s",
+          wr->sg_list[i].length == 16 ? "NVMe-cpl-send"
+                                      : "NVMe-cmd-send",
+          target.phys.nid, target.phys.pid,
+          ptl_qp->remote_pt_index,
+          ptl_uuid_get_initiator_qp_num(match_bits),
+          ptl_uuid_get_target_qp_num(match_bits),
+          local_offset, send_op ? "YES" : "NO");
 
-			rc = PtlPut(ptl_mem_desc->local_w_mem_handle,
+                        rc = PtlPut(ptl_mem_desc->local_w_mem_handle,
 				    local_offset,//local offset
 				    wr->sg_list[i].length,//length
 				    PTL_ACK_REQ,
@@ -753,7 +761,8 @@ spdk_rdma_provider_accel_sequence_supported(void)
 }
 
 int rdma_reject(struct rdma_cm_id *id, const void *private_data,
-                uint8_t private_data_len) {
-        SPDK_PTL_WARN("XXX TODO XXX not impemented yet continue");
-        return 0;
+		uint8_t private_data_len)
+{
+	SPDK_PTL_WARN("XXX TODO XXX not impemented yet continue");
+	return 0;
 }
