@@ -10,7 +10,6 @@
 
 struct rdma_cm_ptl_event_channel {
 	uint64_t magic_number;
-	struct dlist *open_fake_connections;
 	struct deque *events_deque;
 	pthread_mutex_t events_deque_lock;
 	struct rdma_event_channel fake_channel;

@@ -226,15 +226,12 @@ static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
 	if (recv_op->obj_type != PTL_RECV_OP) {
 		SPDK_PTL_FATAL("Corrupted recv_op");
 	}
-	SPDK_PTL_DEBUG("NVMe-cmd-recv: RECV (PtlPut+AUTO_UNLINK) operation is "
-		       "between the pair initiator_qp_num = %d target_qp_num = "
-		       "%d is target? %s size: %lu B. Going to notify in the "
-		       "corresponding AUTO_UNLINK operation",
-		       recv_op->initiator_qp_num,
-		       recv_op->target_qp_num, is_target ? "YES" : "NO",
-		       recv_op->bytes_received);
 
 	if (recv_op->bytes_received == 64) {
+		// if(recv_op->target_qp_num == 3){
+		//   struct spdk_nvme_cmd *cmd = recv_op->io_vector[0].iov_base;
+		//   cmd->opc = UINT16_MAX;
+		// }
 		ptl_print_nvme_cmd(recv_op->io_vector[0].iov_base, "NVMe-cmd-recv");
 	} else {
 		ptl_print_nvme_cpl(recv_op->io_vector[0].iov_base, "NVMe-cpl-recv");
@@ -252,11 +249,18 @@ static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc)
 	wc->wr_id = recv_op->wr_id;
 	wc->qp_num = is_target ? recv_op->target_qp_num : recv_op->initiator_qp_num;
 
+	SPDK_PTL_DEBUG("NVMe-cmd-recv: RECV (PtlPut+AUTO_UNLINK) operation is "
+		       "between the pair initiator_qp_num = %d target_qp_num = "
+		       "%d is target? %s size: %lu B wc->qp_num = %d recv_buffer = %lu",
+		       recv_op->initiator_qp_num,
+		       recv_op->target_qp_num, is_target ? "YES" : "NO",
+		       recv_op->bytes_received, wc->qp_num, (uint64_t)recv_op->io_vector[0].iov_base);
+
 	if (wc->qp_num == 0) {
 		SPDK_PTL_FATAL("Nida does not assign 0 fake qp numbers");
 	}
 
-	wc->src_qp = is_target ? recv_op->initiator_qp_num : recv_op->target_qp_num;
+	wc->src_qp = INT32_MAX;
 	free(recv_op);
 	return true;
 }
@@ -383,7 +387,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	}
 
 	ptl_context.object_type = PTL_CONTEXT;
-	ptl_context.portals_idx_send_recv = PTL_PT_INDEX;
+	// ptl_context.portals_idx_send_recv = PTL_PT_INDEX;
 	SPDK_PTL_DEBUG("Calling PtlInit()");
 	ret = PtlInit();
 	if (ret != PTL_OK) {
@@ -418,7 +422,6 @@ struct ptl_context *ptl_cnxt_get(void)
 	if (ret != PTL_OK) {
 		SPDK_PTL_FATAL("RDMACM: PtlNIInit failed");
 	}
-
 	// Check if PTL_TOTAL_DATA_ORDERING is supported
 	// if (actual.features & PTL_TOTAL_DATA_ORDERING) {
 	// 	SPDK_PTL_DEBUG("Total data ordering is enabled");
@@ -426,8 +429,8 @@ struct ptl_context *ptl_cnxt_get(void)
 	// 	SPDK_PTL_FATAL("Total data ordering is not supported by this implementation. Cannot support NVMe-OF properties");
 	// }
 
-	SPDK_PTL_DEBUG("Actual max_waw_ordered_size: %zu bytes", actual.max_waw_ordered_size);
-	SPDK_PTL_DEBUG("Actual max_war_ordered_size: %zu bytes", actual.max_war_ordered_size);
+	SPDK_PTL_DEBUG("Actual max_waw_ordered_size: %zu bytes",
+		       actual.max_waw_ordered_size);
 
 	ptl_context.fake_ibv_cnxt.ops.poll_cq = ptl_cnxt_poll_cq;
 	ptl_context.fake_cq.context = &ptl_context.fake_ibv_cnxt;
@@ -472,4 +475,6 @@ ptl_handle_ni_t ptl_cnxt_get_ni_handle(struct ptl_context *cnxt)
 	}
 	return cnxt->ni_handle;
 }
+
+
 

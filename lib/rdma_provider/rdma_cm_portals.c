@@ -141,43 +141,77 @@ static struct rdma_ptl_cp_server {
 	uint64_t protocol_version;
 } ptl_control_plane_server = {.init_lock = PTHREAD_MUTEX_INITIALIZER, .status = PTL_CP_SERVER_NOT_RUNNING, .role = "Unknown"};
 
-
-
 static struct rdma_ptl_connections {
+	pthread_mutex_t conn_map_lock;
 	struct ptl_cm_id *ptl_id[RDMA_PTL_MAX_CONNECTIONS];
-} conn_map;
+} conn_map = {.conn_map_lock = PTHREAD_MUTEX_INITIALIZER};
 
 static bool rdma_ptl_conn_map_add(struct ptl_cm_id *ptl_id)
 {
+	bool ret;
+	PTL_CP_SERVER_LOCK(&conn_map.conn_map_lock);
 	for (uint32_t i = 0; i < RDMA_PTL_MAX_CONNECTIONS; i++) {
 		if (conn_map.ptl_id[i]) {
 			continue;
 		}
 		conn_map.ptl_id[i] = ptl_id;
-		SPDK_PTL_DEBUG("[%s] CP server: Added new connection in map with uuid: %lu",
-			       ptl_control_plane_server.role, ptl_id->uuid);
-		return true;
+		SPDK_PTL_DEBUG("[%s] CP server: Added new connection in map with qp_num: %d",
+			       ptl_control_plane_server.role, ptl_id->ptl_qp_num);
+		ret = true;
+		goto exit;
 	}
+	ret = false;
 	SPDK_PTL_FATAL("[%s] CP server: No room for new connections", ptl_control_plane_server.role);
-	return false;/*No more space for new connections*/
+exit:
+	PTL_CP_SERVER_UNLOCK(&conn_map.conn_map_lock);
+	return ret;/*No more space for new connections*/
+}
+
+
+static bool rdma_ptl_conn_map_remove(struct ptl_cm_id *ptl_id)
+{
+	bool ret = false;
+	PTL_CP_SERVER_LOCK(&conn_map.conn_map_lock);
+	for (uint32_t i = 0; i < RDMA_PTL_MAX_CONNECTIONS; i++) {
+		if (conn_map.ptl_id[i] == NULL) {
+			continue;
+		}
+    if(conn_map.ptl_id[i]->ptl_qp_num != ptl_id->ptl_qp_num){
+      continue;
+    }
+		SPDK_PTL_DEBUG("[%s] CP server: removing connection with qp_num = %d",
+			       ptl_control_plane_server.role, ptl_id->ptl_qp_num);
+    conn_map.ptl_id[i] = NULL;
+		ret = true;
+		goto exit;
+	}
+	ret = false;
+	SPDK_PTL_FATAL("[%s] CP server: Did not find connection with qp num: %d",
+		       ptl_control_plane_server.role, ptl_id->ptl_qp_num);
+exit:
+	PTL_CP_SERVER_UNLOCK(&conn_map.conn_map_lock);
+	return ret;
 }
 
 static struct ptl_cm_id *rdma_ptl_conn_map_find_from_qp_num(int qp_num)
 {
-
+	struct ptl_cm_id *ptl_id = NULL;
+	PTL_CP_SERVER_LOCK(&conn_map.conn_map_lock);
 	for (uint32_t i = 0; i < RDMA_PTL_MAX_CONNECTIONS; i++) {
 		if (NULL == conn_map.ptl_id[i]) {
 			continue;
 		}
 
 		if (conn_map.ptl_id[i]->ptl_qp_num == qp_num) {
-			return conn_map.ptl_id[i];
+			ptl_id = conn_map.ptl_id[i];
+			goto exit;
 		}
 	}
 	SPDK_PTL_FATAL("[%s] CP server: Connection with qp num: %d not found",
 		       ptl_control_plane_server.role, qp_num);
-	return NULL;
-
+exit:
+	PTL_CP_SERVER_UNLOCK(&conn_map.conn_map_lock);
+	return ptl_id;
 }
 
 
@@ -296,19 +330,19 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	struct ptl_conn_open *conn_open = &request_open_conn->conn_open;
 	struct ptl_qp * ptl_qp;
 	struct ptl_conn_comm_pair_info comm_pair_info;
-
+  
 	struct ptl_cm_id * ptl_id = ptl_cm_id_create(listen_id->ptl_channel, listen_id->ptl_context);
 	ptl_id->uuid = ptl_uuid_set_target_qp_num(ptl_id->uuid, ptl_id->ptl_qp_num);
 	ptl_id->uuid = ptl_uuid_set_initiator_qp_num(ptl_id->uuid,
 		       request_open_conn->conn_open.initiator_qp_num);
 	SPDK_PTL_DEBUG("[%s] CP server: Got an open connection request from "
-		       "nid: %d pid: %d pte: %d created uuid: %lu. Creating "
-		       "the fake event and send the OPEN_CONNECTION_REPLY",
+		       "nid: %d pid: %d pte: %d Creating "
+		       "the fake event and send the OPEN_CONNECTION_REPLY pair is: target qp num: %d initiator qp num: %d",
 		       ptl_control_plane_server.role,
 		       request_open_conn->msg_header.peer_info.src_nid,
 		       request_open_conn->msg_header.peer_info.src_pid,
 		       request_open_conn->msg_header.peer_info.src_pte,
-		       ptl_id->uuid);
+		       ptl_id->ptl_qp_num, request_open_conn->conn_open.initiator_qp_num);
 
 	comm_pair_info.src_nid = ptl_cnxt_get_nid(ptl_cnxt);
 	comm_pair_info.src_pid = ptl_cnxt_get_pid(ptl_cnxt);
@@ -319,7 +353,6 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	ptl_qp = ptl_qp_create(ptl_cnxt->ptl_pd, ptl_cq, ptl_cq, &comm_pair_info);
 	ptl_id->ptl_qp = ptl_qp;
 	ptl_qp->ptl_cm_id = ptl_id;
-	rdma_ptl_conn_map_add(ptl_id);
 
 	ptl_id->fake_cm_id.qp = &ptl_qp->fake_qp;
 	memcpy(&ptl_id->fake_cm_id.route.addr.dst_addr, &conn_open->src_addr, sizeof(conn_open->src_addr));
@@ -350,6 +383,7 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	fake_event =
 		ptl_cm_id_create_event(ptl_id, listen_id, RDMA_CM_EVENT_CONNECT_REQUEST);
 
+	rdma_ptl_conn_map_add(ptl_id);
 	ptl_cm_id_add_event(ptl_id, fake_event);
 	rdma_ptl_write_event_to_fd(ptl_id->ptl_channel->fake_channel.fd);
 	assert(ptl_id->ptl_channel);
@@ -379,8 +413,11 @@ static void rdma_ptl_handle_open_conn_reply(struct ptl_cm_id *listen_id,
 		SPDK_PTL_FATAL("[%s], CP server: connection failed with code: %d", ptl_control_plane_server.role,
 			       open_conn_reply->status);
 	}
-
-	int qp_num = ptl_uuid_get_initiator_qp_num(conn_msg->conn_open_reply.uuid);
+	/*XXX TODO XXX*/
+	int qp_num =
+		is_target
+		? ptl_uuid_get_target_qp_num(conn_msg->conn_open_reply.uuid)
+		: ptl_uuid_get_initiator_qp_num(conn_msg->conn_open_reply.uuid);
 	SPDK_PTL_DEBUG(
 		"[%s] CP server: Got open connection reply! connection id is: %lu "
 		"initiator qp num: %d target qp num: %d. Creating also the "
@@ -415,7 +452,7 @@ static void rdma_ptl_handle_open_conn_reply(struct ptl_cm_id *listen_id,
 	connection_id->cm_id_state = PTL_CM_CONNECTED;
 	fake_event = ptl_cm_id_create_event(connection_id, NULL, RDMA_CM_EVENT_ESTABLISHED);
 	ptl_cm_id_add_event(connection_id, fake_event);
-	rdma_ptl_write_event_to_fd(listen_id->ptl_channel->fake_channel.fd);
+	rdma_ptl_write_event_to_fd(connection_id->ptl_channel->fake_channel.fd);
 	/* the conn_msg will be recycled by the main control plain server loop*/
 }
 
@@ -435,14 +472,14 @@ static void rdma_ptl_handle_close_conn(struct ptl_conn_msg *request)
 	}
 
 	int initiator_qp_num = ptl_uuid_get_initiator_qp_num(conn_close->uuid);
-  if(initiator_qp_num == 0){
-    SPDK_PTL_FATAL("initiator qp num == 0: Nida does not assign 0 qp numbers!");
-  }
-	
-  int target_qp_num = ptl_uuid_get_target_qp_num(conn_close->uuid);
-  if(target_qp_num == 0){
-    SPDK_PTL_FATAL("target qp num == 0: Nida does not assign 0 qp numbers!");
-  }
+	if (initiator_qp_num == 0) {
+		SPDK_PTL_FATAL("initiator qp num == 0: Nida does not assign 0 qp numbers!");
+	}
+
+	int target_qp_num = ptl_uuid_get_target_qp_num(conn_close->uuid);
+	if (target_qp_num == 0) {
+		SPDK_PTL_FATAL("target qp num == 0: Nida does not assign 0 qp numbers!");
+	}
 
 
 	connection_id = rdma_ptl_conn_map_find_from_qp_num(is_target ? target_qp_num : initiator_qp_num);
@@ -455,13 +492,13 @@ static void rdma_ptl_handle_close_conn(struct ptl_conn_msg *request)
 		"[%s] Got close connection request for connection id: %lu for "
 		"initiator_qp_num: %d target_qp_num: %d. Found connection, "
 		"creating the fake RDMA_CM_EVENT_DISCONNECTED and send the "
-		"OPEN_CONNECTION_REPLY",
+		"CLOSE_CONNECTION_REPLY",
 		ptl_control_plane_server.role, conn_close->uuid, initiator_qp_num,
 		target_qp_num);
 	// SPDK_PTL_DEBUG("[%s] CP server: Found connection id with target qp num: %d to close",
 	// 	       ptl_control_plane_server.role, target_qp_num);
-  connection_id->cm_id_state = PTL_CM_DISCONNECTING;
-	fake_event = ptl_cm_id_create_event(connection_id, NULL,RDMA_CM_EVENT_DISCONNECTED);
+	connection_id->cm_id_state = PTL_CM_DISCONNECTING;
+	fake_event = ptl_cm_id_create_event(connection_id, NULL, RDMA_CM_EVENT_DISCONNECTED);
 
 	ptl_cm_id_add_event(connection_id, fake_event);
 	rdma_ptl_write_event_to_fd(connection_id->ptl_channel->fake_channel.fd);
@@ -485,26 +522,26 @@ static void rdma_ptl_handle_close_conn(struct ptl_conn_msg *request)
 
 static void rdma_ptl_handle_close_conn_reply(struct ptl_conn_msg *conn_msg)
 {
-  struct ptl_conn_close_reply *close_reply = &conn_msg->conn_close_reply;
-  struct rdma_cm_event *fake_event;
-  int initiator_qp_num = ptl_uuid_get_initiator_qp_num(close_reply->uuid);
-  int target_qp_num = ptl_uuid_get_target_qp_num(close_reply->uuid);
-
- 
-  if(initiator_qp_num == 0){
-    SPDK_PTL_FATAL("Corrupted initiator qp num, Nida does not assign 0 qp numbers!");
-  }
-
-  if(target_qp_num == 0){
-    SPDK_PTL_FATAL("Corrupted target qp num, Nida does not assign 0 qp numbers!");
-  }
-
-  struct ptl_cm_id * connection_id = rdma_ptl_conn_map_find_from_qp_num(is_target?target_qp_num:initiator_qp_num); 
-  if(connection_id == NULL){
-    SPDK_PTL_FATAL("Cannot find connection id with qp num: %d",is_target?target_qp_num:initiator_qp_num);
-  }
+	struct ptl_conn_close_reply *close_reply = &conn_msg->conn_close_reply;
+	struct rdma_cm_event *fake_event;
+	int initiator_qp_num = ptl_uuid_get_initiator_qp_num(close_reply->uuid);
+	int target_qp_num = ptl_uuid_get_target_qp_num(close_reply->uuid);
 
 
+	if (initiator_qp_num == 0) {
+		SPDK_PTL_FATAL("Corrupted initiator qp num, Nida does not assign 0 qp numbers!");
+	}
+
+	if (target_qp_num == 0) {
+		SPDK_PTL_FATAL("Corrupted target qp num, Nida does not assign 0 qp numbers!");
+	}
+
+	struct ptl_cm_id * connection_id = rdma_ptl_conn_map_find_from_qp_num(
+			is_target ? target_qp_num : initiator_qp_num);
+	if (connection_id == NULL) {
+		SPDK_PTL_FATAL("Cannot find connection id with qp num: %d",
+			       is_target ? target_qp_num : initiator_qp_num);
+	}
 
 	if (PTL_OK != close_reply->status) {
 		SPDK_PTL_FATAL("[%s], connection close failed with code: %d", ptl_control_plane_server.role,
@@ -513,8 +550,8 @@ static void rdma_ptl_handle_close_conn_reply(struct ptl_conn_msg *conn_msg)
 
 	SPDK_PTL_DEBUG("[%s] Got a close connection reply! connection id is: %lu aldready done staff nothing to do",
 		       ptl_control_plane_server.role, close_reply->uuid);
-  /*At the initiator bye bye connection*/
-  connection_id->cm_id_state = PTL_CM_DISCONNECTED;
+	/*At the initiator bye bye connection*/
+	connection_id->cm_id_state = PTL_CM_DISCONNECTED;
 	fake_event = ptl_cm_id_create_event(connection_id, NULL, RDMA_CM_EVENT_DISCONNECTED);
 	ptl_cm_id_add_event(connection_id, fake_event);
 	rdma_ptl_write_event_to_fd(connection_id->ptl_channel->fake_channel.fd);
@@ -616,8 +653,8 @@ static void *rdma_run_ptl_cp_server(void *args)
 		assert(event.start);
 		conn_msg = event.start;
 
-		SPDK_PTL_DEBUG("[%s] CP server: Received connection related message size is: %lu conn_msg size: %lu",
-			       ptl_control_plane_server.role, event.rlength, sizeof(*conn_msg));
+		// SPDK_PTL_DEBUG("[%s] CP server: Received connection related message size is: %lu conn_msg size: %lu",
+		// 	       ptl_control_plane_server.role, event.rlength, sizeof(*conn_msg));
 
 		if (PTL_OPEN_CONNECTION == conn_msg->msg_header.msg_type) {
 			rdma_ptl_handle_open_conn(listen_id, conn_msg);
@@ -675,7 +712,7 @@ static void rdma_ptl_boot_cp_server(struct  ptl_cm_id *cm_id, const char *role)
 
 	PTL_CP_SERVER_LOCK(&ptl_control_plane_server.init_lock);
 	if (ptl_control_plane_server.status == PTL_CP_SERVER_RUNNING) {
-		SPDK_PTL_WARN("CP server for connections already running, nothing to boot");
+		// SPDK_PTL_WARN("CP server for connections already running, nothing to boot");
 		goto exit;
 	}
 	ptl_control_plane_server.role = role;
@@ -729,6 +766,7 @@ static void rdma_ptl_boot_cp_server(struct  ptl_cm_id *cm_id, const char *role)
 		}
 	}
 
+	SPDK_PTL_DEBUG("CP server: BOOTING control plane server...");
 	if (pthread_create(&ptl_control_plane_server.cp_server_cnxt, NULL,
 			   rdma_run_ptl_cp_server, cm_id)) {
 		perror("Reason of failure of booting control plane server:");
@@ -754,7 +792,6 @@ rdma_create_event_channel(void)
 		return NULL;
 	}
 	ptl_channel->magic_number = RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER;
-	ptl_channel->open_fake_connections = dlist_create(NULL, NULL);
 	RDMA_CM_LOCK_INIT(&ptl_channel->events_deque_lock);
 	ptl_channel->events_deque = deque_create(NULL);
 
@@ -830,32 +867,68 @@ int ibv_query_device(struct ibv_context *context,
 
 	// Zero out the structure first
 	memset(device_attr, 0, sizeof(struct ibv_device_attr));
+	strcpy(device_attr->fw_ver, "2.42.5000");
+	device_attr->node_guid = 0x0002c90300fed670;
+	device_attr->sys_image_guid = 0x0002c90300fed673;
+	device_attr->max_mr_size =  18446744073709551615UL;
+	device_attr->page_size_cap = 0xfffffe00;
+	device_attr->vendor_id = 0x000002c9;
+	device_attr->vendor_part_id = 0x00001003;
+	device_attr->hw_ver = 0x00000001;
+	device_attr->max_qp = 131000;
+	device_attr->max_qp_wr = 16351;
+	device_attr->device_cap_flags = 0x05361c76;
+	device_attr->max_sge = 32;
+	device_attr->max_sge_rd = 30;
+	device_attr->max_cq = 65408;
+	device_attr->max_cqe = 4194303;
+	device_attr->max_mr = 524032;
+	device_attr->max_pd = 32764;
+	device_attr->max_qp_rd_atom = 16;
+	device_attr->max_ee_rd_atom = 0;
+	device_attr->max_res_rd_atom = 2096000;
+	device_attr->max_qp_init_rd_atom = 128;
+	device_attr->max_ee_init_rd_atom = 0;
+	device_attr->atomic_cap = 1; // Assuming 1 corresponds to the enum value
+	device_attr->max_ee = 0;
+	device_attr->max_rdd = 0;
+	device_attr->max_mw = 0;
+	device_attr->max_raw_ipv6_qp = 0;
+	device_attr->max_raw_ethy_qp = 0;
+	device_attr->max_mcast_grp = 8192;
+	device_attr->max_mcast_qp_attach = 248;
+	device_attr->max_total_mcast_qp_attach = 2031616;
+	device_attr->max_ah = 2147483647;
 
-	device_attr->vendor_id = 0x02c9;       //Fake Mellanox id
-	device_attr->vendor_part_id = 0x1017;  // Fake Mellanox part id
-	device_attr->max_qp = 256;             // Number of QPs you'll support
-	device_attr->max_cq = 256;             // Number of CQs
-	device_attr->max_mr = 256;             // Number of Memory Regions
-	device_attr->max_pd = 256;             // Number of Protection Domains
-	device_attr->max_qp_wr = 4096;         // Max Work Requests per QP
-	device_attr->max_cqe = 4096;           // Max CQ entries
-	device_attr->max_mr_size = UINT64_MAX; // Max size of Memory Region
-	device_attr->max_sge = 32;             // Max Scatter/Gather Elements
-	device_attr->max_sge_rd = 32;          // Max SGE for RDMA read
-	device_attr->max_qp_rd_atom = 0;      // Max outstanding RDMA reads
-	device_attr->max_qp_init_rd_atom = 16; // Initial RDMA read resources
 	device_attr->max_srq = 256;            // Max Shared Receive Queues
 	device_attr->max_srq_wr = 4096;        // Max SRQ work requests
 	device_attr->max_srq_sge = 32;         // Max SGE for SRQ
 
-	// Set capabilities flags
-	device_attr->device_cap_flags =
-		IBV_DEVICE_RESIZE_MAX_WR |  // Support QP/CQ resize
-		IBV_DEVICE_BAD_PKEY_CNTR |  // Support bad pkey counter
-		IBV_DEVICE_BAD_QKEY_CNTR |  // Support bad qkey counter
-		IBV_DEVICE_RAW_MULTI |      // Support raw packet QP
-		IBV_DEVICE_AUTO_PATH_MIG |  // Support auto path migration
-		IBV_DEVICE_CHANGE_PHY_PORT; // Support changing physical port
+	// device_attr->vendor_id = 0x02c9;       //Fake Mellanox id
+	// device_attr->vendor_part_id = 0x1017;  // Fake Mellanox part id
+	// device_attr->max_qp = 256;             // Number of QPs you'll support
+	// device_attr->max_cq = 256;             // Number of CQs
+	// device_attr->max_mr = 256;             // Number of Memory Regions
+	// device_attr->max_pd = 256;             // Number of Protection Domains
+	// device_attr->max_qp_wr = 4096;         // Max Work Requests per QP
+	// device_attr->max_cqe = 4096;           // Max CQ entries
+	// device_attr->max_mr_size = UINT64_MAX; // Max size of Memory Region
+	// device_attr->max_sge = 32;             // Max Scatter/Gather Elements
+	// device_attr->max_sge_rd = 32;          // Max SGE for RDMA read
+	// device_attr->max_qp_rd_atom = 0;      // Max outstanding RDMA reads
+	// device_attr->max_qp_init_rd_atom = 16; // Initial RDMA read resources
+	// device_attr->max_srq = 256;            // Max Shared Receive Queues
+	// device_attr->max_srq_wr = 4096;        // Max SRQ work requests
+	// device_attr->max_srq_sge = 32;         // Max SGE for SRQ
+
+	// // Set capabilities flags
+	// device_attr->device_cap_flags =
+	// 	IBV_DEVICE_RESIZE_MAX_WR |  // Support QP/CQ resize
+	// 	IBV_DEVICE_BAD_PKEY_CNTR |  // Support bad pkey counter
+	// 	IBV_DEVICE_BAD_QKEY_CNTR |  // Support bad qkey counter
+	// 	IBV_DEVICE_RAW_MULTI |      // Support raw packet QP
+	// 	IBV_DEVICE_AUTO_PATH_MIG |  // Support auto path migration
+	// 	IBV_DEVICE_CHANGE_PHY_PORT; // Support changing physical port
 	SPDK_PTL_DEBUG("IBVPTL: Trapped ibv_query_device *FILLED* it with reasonable values...DONE");
 	return 0;
 }
@@ -942,7 +1015,6 @@ int rdma_create_id(struct rdma_event_channel *channel, struct rdma_cm_id **id,
 	 * */
 
 	*id = &ptl_id->fake_cm_id;
-	dlist_append(ptl_channel->open_fake_connections, ptl_id);
 	SPDK_PTL_DEBUG("Trapped create cm id FAKED it, waking up possible guys for the event");
 	return 0;
 }
@@ -989,6 +1061,7 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 
 	struct rdma_cm_ptl_event_channel *ptl_channel;
 	struct rdma_cm_event *fake_event;
+  struct ptl_cm_id *ptl_id;
 	ptl_channel = rdma_cm_ptl_event_channel_get(channel);
 	fake_event = NULL;
 	RDMA_CM_LOCK(&ptl_channel->events_deque_lock);
@@ -1003,7 +1076,8 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 	*event = fake_event;
 
 	if (fake_event) {
-		SPDK_PTL_DEBUG(" -------> OK got event of type: %d!", fake_event->event);
+    ptl_id = ptl_cm_id_get(fake_event->id);
+		SPDK_PTL_DEBUG("(nikos) OK got event of type: %d for qp num: %d from channel: %p", fake_event->event, ptl_id->ptl_qp_num, ptl_channel);
 		/* Clean the event*/
 		// uint64_t result;
 		// if (read(channel->fd, &result, sizeof(result)) != sizeof(result)) {
@@ -1436,6 +1510,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 
 int rdma_disconnect(struct rdma_cm_id *id)
 {
+  return 0;
 	struct rdma_ptl_send_buffer *conn_close_request;
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
@@ -1451,28 +1526,28 @@ int rdma_disconnect(struct rdma_cm_id *id)
 		SPDK_PTL_FATAL("Nida does not assign 0 as a target qp num!");
 	}
 
-  if(ptl_id->cm_id_state < 0 || ptl_id->cm_id_state > PTL_CM_GUARD){
-    SPDK_PTL_FATAL("Corrupted state: %d",ptl_id->cm_id_state);
+	if (ptl_id->cm_id_state < 0 || ptl_id->cm_id_state > PTL_CM_GUARD) {
+		SPDK_PTL_FATAL("Corrupted state: %d", ptl_id->cm_id_state);
 
-  }
+	}
 
 	if (ptl_id->cm_id_state == PTL_CM_UNCONNECTED) {
 		SPDK_PTL_FATAL("End up in a wrong state PTL_CM_UNCONNECTED");
 	}
-	
-  if (ptl_id->cm_id_state == PTL_CM_DISCONNECTED) {
+
+	if (ptl_id->cm_id_state == PTL_CM_DISCONNECTED) {
 		SPDK_PTL_FATAL("End up in a wrong state PTL_CM_DISCONNECTED");
 	}
-  
-  if (ptl_id->cm_id_state == PTL_CM_CONNECTING) {
+
+	if (ptl_id->cm_id_state == PTL_CM_CONNECTING) {
 		SPDK_PTL_FATAL("End up in a wrong state PTL_CM_CONNECTING");
 	}
 
-	if (ptl_id->cm_id_state == PTL_CM_DISCONNECTING){
+	if (ptl_id->cm_id_state == PTL_CM_DISCONNECTING) {
 		SPDK_PTL_DEBUG("[%s] CP server: No-op ptl_id already disconnecting/disconnected for queue pair initiator: %d target: %d",
 			       ptl_control_plane_server.role, ptl_uuid_get_initiator_qp_num(ptl_id->uuid),
 			       ptl_uuid_get_target_qp_num(ptl_id->uuid));
-    ptl_id->cm_id_state = PTL_CM_DISCONNECTED;
+		ptl_id->cm_id_state = PTL_CM_DISCONNECTED;
 		return 0;
 	}
 
@@ -1527,6 +1602,7 @@ int rdma_destroy_id(struct rdma_cm_id *id)
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	SPDK_PTL_DEBUG("QP NUM = %d ptl_id = %p CAUTION, is this ok? XXX TODO XXX", ptl_id->ptl_qp_num,
 		       ptl_id);
+  rdma_ptl_conn_map_remove(ptl_id);
 	memset(ptl_id, 0x00, sizeof(*ptl_id));
 	free(ptl_id);
 	return 0;
@@ -1535,18 +1611,17 @@ int rdma_destroy_id(struct rdma_cm_id *id)
 void rdma_destroy_event_channel(struct rdma_event_channel *channel)
 {
 	SPDK_PTL_DEBUG("CAUTION: Destroying ptl_channel Ignore XXX TODO XXX");
-	// struct rdma_cm_ptl_event_channel *ptl_channel = SPDK_CONTAINEROF(channel,
-	// 	struct rdma_cm_ptl_event_channel, fake_channel);
-	// if (ptl_channel->magic_number != RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER) {
-	// 	SPDK_PTL_FATAL("Corrupted object");
-	// }
-	// dlist_destroy(ptl_channel->open_fake_connections);
+	struct rdma_cm_ptl_event_channel *ptl_channel = SPDK_CONTAINEROF(channel,
+		struct rdma_cm_ptl_event_channel, fake_channel);
+	if (ptl_channel->magic_number != RDMA_CM_PTL_EVENT_CHANNEL_MAGIC_NUMBER) {
+		SPDK_PTL_FATAL("Corrupted object");
+	}
 
-	// if (close(channel->fd) != 0) {
-	// 	SPDK_PTL_FATAL("Error closing eventfd: %s", strerror(errno));
-	// }
-	// memset(ptl_channel, 0x00, sizeof(*ptl_channel));
-	// free(ptl_channel);
+	if (close(channel->fd) != 0) {
+		SPDK_PTL_FATAL("Error closing eventfd: %s", strerror(errno));
+	}
+	memset(ptl_channel, 0x00, sizeof(*ptl_channel));
+	free(ptl_channel);
 }
 
 int ibv_dealloc_pd(struct ibv_pd *pd)
