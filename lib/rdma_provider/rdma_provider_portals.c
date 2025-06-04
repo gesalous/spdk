@@ -668,7 +668,6 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		return 0;
 	}
 
-	SPDK_PTL_DEBUG("NVMe: Flushing send requests....\n");
 	match_bits = ptl_qp->ptl_cm_id->uuid;
 
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
@@ -713,20 +712,20 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				send_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
 			}
 
-      SPDK_PTL_DEBUG(
-          "%s: Performing a SEND (PtlPut) operation to nid: "
-          "%d pid: %d pt_index: %d initiator qp_num: %d "
-          "target qp_num: %d local_offset: %lu is it "
-          "signaled?: %s",
-          wr->sg_list[i].length == 16 ? "NVMe-cpl-send"
-                                      : "NVMe-cmd-send",
-          target.phys.nid, target.phys.pid,
-          ptl_qp->remote_pt_index,
-          ptl_uuid_get_initiator_qp_num(match_bits),
-          ptl_uuid_get_target_qp_num(match_bits),
-          local_offset, send_op ? "YES" : "NO");
+			SPDK_PTL_DEBUG(
+				"%s: Performing a SEND (PtlPut) operation to nid: "
+				"%d pid: %d pt_index: %d initiator qp_num: %d "
+				"target qp_num: %d local_offset: %lu is it "
+				"signaled?: %s",
+				wr->sg_list[i].length == 16 ? "NVMe-cpl-send"
+				: "NVMe-cmd-send",
+				target.phys.nid, target.phys.pid,
+				ptl_qp->remote_pt_index,
+				ptl_uuid_get_initiator_qp_num(match_bits),
+				ptl_uuid_get_target_qp_num(match_bits),
+				local_offset, send_op ? "YES" : "NO");
 
-                        rc = PtlPut(ptl_mem_desc->local_w_mem_handle,
+			rc = PtlPut(ptl_mem_desc->local_w_mem_handle,
 				    local_offset,//local offset
 				    wr->sg_list[i].length,//length
 				    PTL_ACK_REQ,
