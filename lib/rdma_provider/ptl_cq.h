@@ -9,25 +9,37 @@
 #include <pthread.h>
 #include <stdint.h>
 struct ptl_context;
-
-struct ptl_cq {
+struct ptl_cq_singleon_part {
 	ptl_obj_type_e object_type;
-	struct ibv_cq fake_ibv_cq;
 	struct ptl_context *ptl_context;
 	ptl_handle_eq_t eq_handle;
 	void *cq_context;
 	pthread_mutex_t lock;
+	int cq_next_id;
 	bool initialized;
 };
 
-struct ptl_cq *ptl_cq_get_instance(void *cq_context);
+struct ptl_cq {
+	ptl_obj_type_e object_type;
+	struct ptl_cq_singleon_part *cq_static;
+	struct ibv_cq fake_ibv_cq;
+	int cq_id;
+	// struct ptl_context *ptl_context;
+	// ptl_handle_eq_t eq_handle;
+	// void *cq_context;
+	// pthread_mutex_t lock;
+	// bool initialized;
+};
+
+struct ptl_cq *ptl_cq_create(void *cq_context);
+// struct ptl_cq *ptl_cq_get_instance(void *cq_context);
 
 static inline ptl_handle_eq_t ptl_cq_get_queue(struct ptl_cq *ptl_cq)
 {
-	if (false == ptl_cq->initialized) {
+	if (false == ptl_cq->cq_static->initialized) {
 		SPDK_PTL_FATAL("Uninitialized event queue");
 	}
-	return ptl_cq->eq_handle;
+	return ptl_cq->cq_static->eq_handle;
 }
 
 static inline struct ptl_cq *ptl_cq_get_from_ibv_cq(struct ibv_cq *ibv_cq)
@@ -44,4 +56,5 @@ static inline struct ibv_cq *ptl_cq_get_ibv_cq(struct ptl_cq *ptl_cq)
 	return &ptl_cq->fake_ibv_cq;
 }
 
+ptl_handle_eq_t ptl_cq_get_static_event_queue(void);
 #endif
