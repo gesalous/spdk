@@ -201,7 +201,8 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		/*Initialize the matching entries*/
 		memset(&me, 0, sizeof(me));
 		me.ignore_bits = PTL_UUID_IGNORE_MASK;
-		me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_SEND_RECV);
+		// me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_SEND_RECV);
+		me.match_bits = PTL_UUID_TARGET_SRQ_MATCH_BITS;
 		me.match_id.phys.nid = PTL_NID_ANY;
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
@@ -309,7 +310,8 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		// Initialize the matching entry
 		memset(&me, 0, sizeof(me));
 		me.ignore_bits = PTL_UUID_IGNORE_MASK;
-		me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_SEND_RECV);
+		// me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_SEND_RECV);
+		me.match_bits = PTL_UUID_SEND_RECV_MASK;
 		me.match_id.phys.nid = PTL_NID_ANY;
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
@@ -678,12 +680,15 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 		spdk_rdma_print_wr_flags(wr);
 		if (wr->opcode == IBV_WR_RDMA_WRITE) {
-			spdk_rdma_provider_ptl_rdma_write(ptl_pd, ptl_qp, wr, ptl_uuid_set_op_type(match_bits, PTL_RMA));
+
+			spdk_rdma_provider_ptl_rdma_write(ptl_pd, ptl_qp, wr, ptl_uuid_set_match_list(match_bits,
+							  ptl_qp->ptl_cm_id->rma_match_bits));
 			continue;
 		}
 
 		if (wr->opcode == IBV_WR_RDMA_READ) {
-			spdk_rdma_provider_ptl_rdma_read(ptl_pd, ptl_qp, wr, ptl_uuid_set_op_type(match_bits, PTL_RMA));
+			spdk_rdma_provider_ptl_rdma_read(ptl_pd, ptl_qp, wr, ptl_uuid_set_match_list(match_bits,
+							 ptl_qp->ptl_cm_id->rma_match_bits));
 			continue;
 		}
 
@@ -731,7 +736,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				    PTL_ACK_REQ,
 				    target,// target process
 				    ptl_qp->remote_pt_index,//portal table index
-				    ptl_uuid_set_op_type(match_bits, PTL_SEND_RECV),//match bits
+				    ptl_uuid_set_match_list(match_bits, ptl_qp->ptl_cm_id->recv_match_bits),//match bits
 				    0,// remote offset, don't care let target decide
 				    send_op,
 				    0);

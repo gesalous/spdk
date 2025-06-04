@@ -36,6 +36,10 @@ struct ptl_cm_id {
 	struct ptl_cq *recv_queue;
 	struct ptl_context *ptl_context;
 	uint64_t uuid;
+	/*Where the remote peer has MEs for recv*/
+	uint64_t recv_match_bits;
+	/*Where the remote peer has MEs for RMA operations*/
+	uint64_t rma_match_bits;
 	ptl_cm_id_e cm_id_state;
 	int ptl_qp_num;
 	struct rdma_conn_param conn_param;

@@ -267,7 +267,8 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 
 
 		ptl_pd_mem_desc->remote_wr_me.ignore_bits = PTL_UUID_IGNORE_MASK;
-		ptl_pd_mem_desc->remote_wr_me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_RMA);
+		// ptl_pd_mem_desc->remote_wr_me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_RMA);
+		ptl_pd_mem_desc->remote_wr_me.match_bits = PTL_UUID_RMA_MASK;
 		ptl_pd_mem_desc->remote_wr_me.min_free    = 0;
 
 		ptl_pd_mem_desc->remote_read = rdma_utils_ptl_is_remote_read(access_flags);
@@ -527,7 +528,7 @@ rdma_add_dev(struct ibv_context *context)
 	}
 
 	dev->context = context;
-  dev->ref++;
+	dev->ref++;
 	TAILQ_INSERT_TAIL(&g_dev_list, dev, tailq);
 
 	return dev;

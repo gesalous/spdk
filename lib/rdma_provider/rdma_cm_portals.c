@@ -22,6 +22,7 @@
 #include <rdma/rdma_cma.h>
 #include <semaphore.h>
 #include <spdk/nvmf_spec.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <sys/eventfd.h>
@@ -176,12 +177,12 @@ static bool rdma_ptl_conn_map_remove(struct ptl_cm_id *ptl_id)
 		if (conn_map.ptl_id[i] == NULL) {
 			continue;
 		}
-    if(conn_map.ptl_id[i]->ptl_qp_num != ptl_id->ptl_qp_num){
-      continue;
-    }
+		if (conn_map.ptl_id[i]->ptl_qp_num != ptl_id->ptl_qp_num) {
+			continue;
+		}
 		SPDK_PTL_DEBUG("[%s] CP server: removing connection with qp_num = %d",
 			       ptl_control_plane_server.role, ptl_id->ptl_qp_num);
-    conn_map.ptl_id[i] = NULL;
+		conn_map.ptl_id[i] = NULL;
 		ret = true;
 		goto exit;
 	}
@@ -330,7 +331,7 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	struct ptl_conn_open *conn_open = &request_open_conn->conn_open;
 	struct ptl_qp * ptl_qp;
 	struct ptl_conn_comm_pair_info comm_pair_info;
-  
+
 	struct ptl_cm_id * ptl_id = ptl_cm_id_create(listen_id->ptl_channel, listen_id->ptl_context);
 	ptl_id->uuid = ptl_uuid_set_target_qp_num(ptl_id->uuid, ptl_id->ptl_qp_num);
 	ptl_id->uuid = ptl_uuid_set_initiator_qp_num(ptl_id->uuid,
@@ -356,6 +357,12 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 
 	ptl_id->fake_cm_id.qp = &ptl_qp->fake_qp;
 	memcpy(&ptl_id->fake_cm_id.route.addr.dst_addr, &conn_open->src_addr, sizeof(conn_open->src_addr));
+
+	ptl_id->recv_match_bits = conn_open->recv_match_bits;
+	ptl_id->rma_match_bits = conn_open->rma_match_bits;
+	SPDK_PTL_DEBUG("MATCH_BITS: The remote guy has MEs for recv in match_bits: "
+		       "%lu and for RMA: %lu",
+		       ptl_id->recv_match_bits, ptl_id->rma_match_bits);
 
 	rdma_cm_find_matching_local_ip(&ptl_id->fake_cm_id.route.addr.dst_addr,
 				       &ptl_id->fake_cm_id.route.addr.src_addr);
@@ -430,13 +437,21 @@ static void rdma_ptl_handle_open_conn_reply(struct ptl_cm_id *listen_id,
 			       ptl_control_plane_server.role, qp_num);
 	}
 	connection_id->uuid = open_conn_reply->uuid;
+	/*Inform what are the srq bits of the target*/
+	connection_id->recv_match_bits = open_conn_reply->srq_match_bits;
+	connection_id->rma_match_bits = UINT64_MAX;
+	SPDK_PTL_DEBUG("MATCH_BITS: Target match bits for its srq are: %lu setting "
+		       "rma_match_bits to: %lu NO RMA operations from initiator to "
+		       "target allowed",
+		       connection_id->recv_match_bits, connection_id->rma_match_bits);
+
 	memcpy(&connection_id->conn_msg, conn_msg, sizeof(*conn_msg));
 
-
 	/* Create fake RDMA event for compatibility */
-	// SPDK_PTL_DEBUG("[%s] CP server Got open connection reply creating the fake event",
-	// 	       ptl_control_plane_server.role);
-	SPDK_PTL_DEBUG("CONN_PARAM Deserializing in handle_open_conn_reply params of the target");
+	// SPDK_PTL_DEBUG("[%s] CP server Got open connection reply creating the fake
+	// event", 	       ptl_control_plane_server.role);
+	SPDK_PTL_DEBUG("CONN_PARAM Deserializing in handle_open_conn_reply params of "
+		       "the target");
 	connection_id->conn_param = open_conn_reply->conn_param;
 	if (open_conn_reply->conn_param.private_data_len) {
 		SPDK_PTL_DEBUG("CONN_PARAM Deserializing in handle_open_conn_reply private data of the target");
@@ -1061,7 +1076,7 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 
 	struct rdma_cm_ptl_event_channel *ptl_channel;
 	struct rdma_cm_event *fake_event;
-  struct ptl_cm_id *ptl_id;
+	struct ptl_cm_id *ptl_id;
 	ptl_channel = rdma_cm_ptl_event_channel_get(channel);
 	fake_event = NULL;
 	RDMA_CM_LOCK(&ptl_channel->events_deque_lock);
@@ -1076,8 +1091,9 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 	*event = fake_event;
 
 	if (fake_event) {
-    ptl_id = ptl_cm_id_get(fake_event->id);
-		SPDK_PTL_DEBUG("(nikos) OK got event of type: %d for qp num: %d from channel: %p", fake_event->event, ptl_id->ptl_qp_num, ptl_channel);
+		ptl_id = ptl_cm_id_get(fake_event->id);
+		SPDK_PTL_DEBUG("(nikos) OK got event of type: %d for qp num: %d from channel: %p",
+			       fake_event->event, ptl_id->ptl_qp_num, ptl_channel);
 		/* Clean the event*/
 		// uint64_t result;
 		// if (read(channel->fd, &result, sizeof(result)) != sizeof(result)) {
@@ -1393,6 +1409,9 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	request_buf->conn_msg.msg_header.peer_info.src_pid = ptl_cnxt_get_pid(ptl_cnxt);
 	request_buf->conn_msg.msg_header.peer_info.src_pte = PTL_CP_SERVER_PTE;
 	request_buf->conn_msg.conn_open.initiator_qp_num = ptl_id->ptl_qp_num;
+	/*Inform the target about the match bits I (the initiator) use for my recv operations*/
+	request_buf->conn_msg.conn_open.recv_match_bits = PTL_UUID_SEND_RECV_MASK;
+	request_buf->conn_msg.conn_open.rma_match_bits = PTL_UUID_RMA_MASK;
 
 	memcpy(&request_buf->conn_msg.conn_open.src_addr, &id->route.addr.src_addr,
 	       sizeof(request_buf->conn_msg.conn_open.src_addr));
@@ -1487,6 +1506,10 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 		conn_param->private_data_len;
 	conn_reply_buf->conn_msg.conn_open_reply.status = PTL_OK;
 	conn_reply_buf->conn_msg.conn_open_reply.uuid = ptl_id->uuid;
+
+	/*Tell the initiator (you are the target) what are the match bits of my srq*/
+	conn_reply_buf->conn_msg.conn_open_reply.srq_match_bits = PTL_UUID_TARGET_SRQ_MATCH_BITS;
+
 	conn_reply_buf->conn_msg.conn_open_reply.conn_param = *conn_param;
 	conn_reply_buf->conn_msg.conn_open_reply.conn_param.private_data = NULL;/*Intentionally*/
 	conn_param_private_data = (char*)conn_reply_buf + sizeof(*conn_reply_buf);
@@ -1510,7 +1533,7 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 
 int rdma_disconnect(struct rdma_cm_id *id)
 {
-  return 0;
+	return 0;
 	struct rdma_ptl_send_buffer *conn_close_request;
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
@@ -1602,7 +1625,7 @@ int rdma_destroy_id(struct rdma_cm_id *id)
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	SPDK_PTL_DEBUG("QP NUM = %d ptl_id = %p CAUTION, is this ok? XXX TODO XXX", ptl_id->ptl_qp_num,
 		       ptl_id);
-  rdma_ptl_conn_map_remove(ptl_id);
+	rdma_ptl_conn_map_remove(ptl_id);
 	memset(ptl_id, 0x00, sizeof(*ptl_id));
 	free(ptl_id);
 	return 0;
