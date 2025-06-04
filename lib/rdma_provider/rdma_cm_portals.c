@@ -1410,7 +1410,7 @@ int rdma_connect(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 	request_buf->conn_msg.msg_header.peer_info.src_pte = PTL_CP_SERVER_PTE;
 	request_buf->conn_msg.conn_open.initiator_qp_num = ptl_id->ptl_qp_num;
 	/*Inform the target about the match bits I (the initiator) use for my recv operations*/
-	request_buf->conn_msg.conn_open.recv_match_bits = PTL_UUID_SEND_RECV_MASK;
+	request_buf->conn_msg.conn_open.recv_match_bits = ptl_id->my_match_bits;
 	request_buf->conn_msg.conn_open.rma_match_bits = PTL_UUID_RMA_MASK;
 
 	memcpy(&request_buf->conn_msg.conn_open.src_addr, &id->route.addr.src_addr,

@@ -40,6 +40,8 @@ struct ptl_cm_id {
 	uint64_t recv_match_bits;
 	/*Where the remote peer has MEs for RMA operations*/
 	uint64_t rma_match_bits;
+	/*Which MY match bits are*/
+	uint64_t my_match_bits;
 	ptl_cm_id_e cm_id_state;
 	int ptl_qp_num;
 	struct rdma_conn_param conn_param;
