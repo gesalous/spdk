@@ -311,7 +311,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		memset(&me, 0, sizeof(me));
 		me.ignore_bits = PTL_UUID_IGNORE_MASK;
 		// me.match_bits = ptl_uuid_set_op_type(PTL_UUID_IGNORE_MASK, PTL_SEND_RECV);
-		me.match_bits = PTL_UUID_SEND_RECV_MASK;
+		me.match_bits = portals_qp->ptl_id->my_match_bits;
 		me.match_id.phys.nid = PTL_NID_ANY;
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
@@ -338,6 +338,8 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	}
 
 	/* gesalous end */
+	SPDK_PTL_DEBUG("MATCH_BITS: Registered memory for a single QP under match bits: %lu",
+		       portals_qp->ptl_id->my_match_bits);
 	spdk_rdma_qp->recv_wrs.first = NULL;
 	spdk_rdma_qp->stats->recv.doorbell_updates++;
 

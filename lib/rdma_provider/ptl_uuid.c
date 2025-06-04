@@ -1,6 +1,7 @@
 #include "ptl_uuid.h"
 #include "ptl_log.h"
 #include <inttypes.h>
+#include <pthread.h>
 #include <stdint.h>
 
 /*We keep target's qp num in the last two least significant (0,1) bytes of uuid*/
@@ -93,4 +94,18 @@ uint64_t ptl_uuid_set_cq_num(uint64_t uuid, int cq_num)
 	uuid |= (cq << 32);
 	return uuid;
 }
+
+uint64_t ptl_uuid_get_next_match_bit(void)
+{
+	static pthread_mutex_t lock = PTHREAD_MUTEX_INITIALIZER;
+	static uint64_t global_match_bits = PTL_UUID_RMA_MASK;
+	pthread_mutex_lock(&lock);
+	uint64_t my_match_bits = (global_match_bits >> 48) + 1;
+	my_match_bits <<= 48;
+	global_match_bits = my_match_bits;
+	SPDK_PTL_DEBUG("MATCH_BITS: Just gave match bit: %lu", my_match_bits);
+	pthread_mutex_unlock(&lock);
+	return my_match_bits;
+}
+
 

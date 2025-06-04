@@ -18,6 +18,8 @@
 // } ptl_uuid_op_type_e;
 
 
+uint64_t ptl_uuid_get_next_match_bit(void);
+
 uint64_t ptl_uuid_set_match_list(uint64_t uuid, uint64_t match_list);
 
 // uint64_t ptl_uuid_set_op_type(uint64_t uuid, ptl_uuid_op_type_e op);
