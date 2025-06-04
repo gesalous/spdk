@@ -188,7 +188,7 @@ static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc)
 	memset(wc, 0xFF, sizeof(*wc));
 
 	if (event.ni_fail_type != PTL_NI_OK) {
-		SPDK_PTL_FATAL("Operation failed");
+		SPDK_PTL_FATAL("Operation failed with code: %d", event.ni_fail_type);
 	}
 	wc->status =
 		event.ni_fail_type == PTL_NI_OK ? IBV_WC_SUCCESS : IBV_WC_LOC_PROT_ERR;

@@ -1,11 +1,8 @@
-#ifndef PTL_UUID_H
-#define PTL_UUID_H
 #include "ptl_uuid.h"
 #include "ptl_log.h"
+#include <inttypes.h>
 #include <stdint.h>
 
-#define PTL_UUID_SEND_RECV_MASK 0x4000000000000000UL
-#define PTL_UUID_RMA_MASK       0x8000000000000000UL
 /*We keep target's qp num in the last two least significant (0,1) bytes of uuid*/
 #define PTL_UUID_TARGET_QP_NUM_MASK    0xFFFFFFFFFFFF0000UL
 /*We keep initiator's qp num in bytes 2,3*/
@@ -16,25 +13,28 @@
 /* We use the 2 most significant bytes for match bits */
 #define PTL_UUID_IGNORE_MASK          0x0000FFFFFFFFFFFFUL
 
-typedef enum {
-	PTL_SEND_RECV = 19,
-	PTL_RMA
-} ptl_uuid_op_type_e;
-
-
-uint64_t ptl_uuid_set_op_type(uint64_t uuid, ptl_uuid_op_type_e op)
+uint64_t ptl_uuid_set_match_list(uint64_t uuid, uint64_t match_list)
 {
-	if (op == PTL_SEND_RECV) {
-		return (uuid & PTL_UUID_IGNORE_MASK) | PTL_UUID_SEND_RECV_MASK;
-	}
-
-	if (op == PTL_RMA) {
-		return (uuid & PTL_UUID_IGNORE_MASK) | PTL_UUID_RMA_MASK;
-	}
-
-	SPDK_PTL_FATAL("Unknown type of operation");
-	return 0;
+	match_list &= ~PTL_UUID_IGNORE_MASK;
+	uuid &= PTL_UUID_IGNORE_MASK;
+	uuid |= match_list;
+	SPDK_PTL_DEBUG("MATCH_BITS in hex: 0x%" PRIx64, uuid);
+	return uuid;
 }
+
+// uint64_t ptl_uuid_set_op_type(uint64_t uuid, ptl_uuid_op_type_e op)
+// {
+// 	if (op == PTL_SEND_RECV) {
+// 		return (uuid & PTL_UUID_IGNORE_MASK) | PTL_UUID_SEND_RECV_MASK;
+// 	}
+
+// 	if (op == PTL_RMA) {
+// 		return (uuid & PTL_UUID_IGNORE_MASK) | PTL_UUID_RMA_MASK;
+// 	}
+
+// 	SPDK_PTL_FATAL("Unknown type of operation");
+// 	return 0;
+// }
 
 uint64_t ptl_uuid_set_target_qp_num(uint64_t uuid, int qp_num)
 {
@@ -93,5 +93,4 @@ uint64_t ptl_uuid_set_cq_num(uint64_t uuid, int cq_num)
 	uuid |= (cq << 32);
 	return uuid;
 }
-#endif
 
