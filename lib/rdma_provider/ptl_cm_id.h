@@ -32,8 +32,6 @@ struct ptl_cm_id {
 	/*As in verbs, each ptl_cm_id associates with a single ptl_pd*/
 	struct ptl_pd *ptl_pd;
 	struct ptl_qp *ptl_qp;
-	struct ptl_cq *send_queue;
-	struct ptl_cq *recv_queue;
 	struct ptl_context *ptl_context;
 	uint64_t uuid;
 	/*Where the remote peer has MEs for recv*/
@@ -44,12 +42,16 @@ struct ptl_cm_id {
 	uint64_t my_match_bits;
 	ptl_cm_id_e cm_id_state;
 	int ptl_qp_num;
+	struct ptl_cq *cq;
+	bool is_listen_id;
 	struct rdma_conn_param conn_param;
 	//needed for connection setup and shit
 	const void *fake_data;
 };
 
+void ptl_cm_id_set_recv_cq(struct ptl_cm_id *ptl_id, struct ptl_cq *recv_cq);
 
+void ptl_cm_id_set_send_cq(struct ptl_cm_id *ptl_id, struct ptl_cq *send_cq);
 
 struct ptl_cm_id *ptl_cm_id_create(struct rdma_cm_ptl_event_channel * event_channel, void *context);
 
@@ -86,23 +88,6 @@ static inline void ptl_cm_id_set_ptl_qp(struct ptl_cm_id *ptl_id, struct ptl_qp 
 	ptl_id->fake_cm_id.qp = ptl_qp_get_ibv_qp(ptl_qp);
 }
 
-static inline void ptl_cm_id_set_send_queue(struct ptl_cm_id *ptl_id, struct ptl_cq *send_queue)
-{
-	if (ptl_id->send_queue) {
-		SPDK_PTL_FATAL("Send queue already set");
-	}
-	ptl_id->send_queue = send_queue;
-	ptl_id->fake_cm_id.send_cq = ptl_cq_get_ibv_cq(send_queue);
-}
-
-static inline void ptl_cm_id_set_recv_queue(struct ptl_cm_id *ptl_id, struct ptl_cq *recv_queue)
-{
-	if (ptl_id->recv_queue) {
-		SPDK_PTL_FATAL("Recv queue already set");
-	}
-	ptl_id->recv_queue = recv_queue;
-	ptl_id->fake_cm_id.recv_cq = ptl_cq_get_ibv_cq(recv_queue);
-}
 
 static inline void ptl_cm_id_set_ptl_pd(struct ptl_cm_id *ptl_id, struct ptl_pd *ptl_pd)
 {

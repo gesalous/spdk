@@ -327,12 +327,12 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	assert(request_open_conn);
 	struct rdma_cm_event *fake_event = {0};
 	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
-	struct ptl_cq *ptl_cq = ptl_cq_get_instance(NULL);
 	struct ptl_conn_open *conn_open = &request_open_conn->conn_open;
 	struct ptl_qp * ptl_qp;
 	struct ptl_conn_comm_pair_info comm_pair_info;
 
 	struct ptl_cm_id * ptl_id = ptl_cm_id_create(listen_id->ptl_channel, listen_id->ptl_context);
+
 	ptl_id->uuid = ptl_uuid_set_target_qp_num(ptl_id->uuid, ptl_id->ptl_qp_num);
 	ptl_id->uuid = ptl_uuid_set_initiator_qp_num(ptl_id->uuid,
 		       request_open_conn->conn_open.initiator_qp_num);
@@ -351,7 +351,7 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	comm_pair_info.dst_nid = request_open_conn->msg_header.peer_info.src_nid;
 	comm_pair_info.dst_pid = request_open_conn->msg_header.peer_info.src_pid;
 	comm_pair_info.dst_pte = PTL_PT_INDEX;
-	ptl_qp = ptl_qp_create(ptl_cnxt->ptl_pd, ptl_cq, ptl_cq, &comm_pair_info);
+	ptl_qp = ptl_qp_create(ptl_cnxt->ptl_pd, listen_id->cq, listen_id->cq, &comm_pair_info);
 	ptl_id->ptl_qp = ptl_qp;
 	ptl_qp->ptl_cm_id = ptl_id;
 
@@ -974,8 +974,8 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 {
 
 	SPDK_PTL_DEBUG("IBVPTL: Ok trapped ibv_create_cq time to create the event queue in portals");
-	struct ptl_cq *ptl_cq = ptl_cq_get_instance(cq_context);
-	SPDK_PTL_DEBUG("Ok set up event queue for PORTALS :-)");
+	struct ptl_cq *ptl_cq = ptl_cq_create(cq_context);
+	SPDK_PTL_DEBUG("Ok set up event queue for PORTALS :-) CQ id = %d", ptl_cq->cq_id);
 	return ptl_cq_get_ibv_cq(ptl_cq);
 }
 
@@ -1048,8 +1048,12 @@ int rdma_bind_addr(struct rdma_cm_id *id, struct sockaddr *addr)
 
 int rdma_listen(struct rdma_cm_id *id, int backlog)
 {
-
 	struct ptl_cm_id * ptl_id = ptl_cm_id_get(id);
+	ptl_id->is_listen_id = true;
+	if (ptl_id->cq == NULL) {
+		ptl_id->cq = ptl_cq_create(ptl_cnxt_get());
+	}
+
 	// struct rdma_cm_event *fake_event;
 	rdma_ptl_boot_cp_server(ptl_id, "TARGET");
 
@@ -1362,8 +1366,6 @@ int rdma_create_qp(struct rdma_cm_id *id, struct ibv_pd *pd,
 	/*Update cm_id*/
 	ptl_cm_id_set_ptl_qp(ptl_id, ptl_qp);
 	ptl_cm_id_set_ptl_pd(ptl_id, ptl_pd);
-	ptl_cm_id_set_send_queue(ptl_id, send_queue);
-	ptl_cm_id_set_recv_queue(ptl_id, recv_queue);
 	ptl_qp->ptl_cm_id = ptl_id;
 	SPDK_PTL_DEBUG("Successfully created Portals Queue Pair Object and updated Portal CM ID and Queue Pair pointers");
 	return 0;
@@ -1615,6 +1617,7 @@ int ibv_destroy_cq(struct ibv_cq *cq)
 {
 	struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(cq);
 	SPDK_PTL_DEBUG("CAUTION, ignore this XXX TODO XXX");
+	free(ptl_cq);
 	return 0;
 }
 

@@ -185,7 +185,6 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 {
 	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
 	struct ptl_pd *ptl_pd;
-	struct ptl_cq *ptl_cq;
 	struct spdk_rdma_utils_mem_map *rmap = cb_ctx;
 	struct ibv_pd *pd = rmap->pd;
 	struct ibv_mr *mr;
@@ -211,7 +210,6 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 	rdma_utils_ptl_is_access_zero_based(access_flags);
 
 	ptl_pd = ptl_pd_get_from_ibv_pd(rmap->pd);
-	ptl_cq = ptl_cq_get_instance(NULL);
 	ptl_context = ptl_cnxt_get_from_ibvpd(rmap->pd);
 	spdk_ptl_print_access_flags(access_flags);
 
@@ -238,7 +236,7 @@ rdma_utils_mem_notify(void *cb_ctx, struct spdk_mem_map *map,
 			ptl_pd_mem_desc->local_w_mem_desc.start = vaddr;
 			ptl_pd_mem_desc->local_w_mem_desc.options = 0;
 			ptl_pd_mem_desc->local_w_mem_desc.length = size;
-			ptl_pd_mem_desc->local_w_mem_desc.eq_handle = ptl_cq_get_queue(ptl_cq);
+			ptl_pd_mem_desc->local_w_mem_desc.eq_handle = ptl_cq_get_static_event_queue();
 			rc = PtlCTAlloc(ptl_cnxt_get_ni_handle(ptl_context), &ptl_pd_mem_desc->local_w_mem_desc.ct_handle);
 			if (PTL_OK != rc) {
 				SPDK_PTL_FATAL("Failed to allocate a counting event");
