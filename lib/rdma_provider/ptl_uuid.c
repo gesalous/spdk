@@ -19,7 +19,7 @@ uint64_t ptl_uuid_set_match_list(uint64_t uuid, uint64_t match_list)
 	match_list &= ~PTL_UUID_IGNORE_MASK;
 	uuid &= PTL_UUID_IGNORE_MASK;
 	uuid |= match_list;
-	SPDK_PTL_DEBUG("MATCH_BITS in hex: 0x%" PRIx64, uuid);
+	// SPDK_PTL_DEBUG("MATCH_BITS in hex: 0x%" PRIx64, uuid);
 	return uuid;
 }
 
