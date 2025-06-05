@@ -338,8 +338,8 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	}
 
 	/* gesalous end */
-	SPDK_PTL_DEBUG("MATCH_BITS: Registered memory for a single QP under match bits: %lu",
-		       portals_qp->ptl_id->my_match_bits);
+	// SPDK_PTL_DEBUG("MATCH_BITS: Registered memory for a single QP under match bits: %lu",
+	// 	       portals_qp->ptl_id->my_match_bits);
 	spdk_rdma_qp->recv_wrs.first = NULL;
 	spdk_rdma_qp->stats->recv.doorbell_updates++;
 
