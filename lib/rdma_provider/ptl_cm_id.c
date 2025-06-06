@@ -1,9 +1,9 @@
 #include "ptl_cm_id.h"
 #include "deque.h"
-#include "lib/rdma_provider/ptl_object_types.h"
 #include "ptl_context.h"
 #include "ptl_log.h"
 #include "ptl_macros.h"
+#include "ptl_object_types.h"
 #include "ptl_uuid.h"
 #include "rdma_cm_ptl_event_channel.h"
 #include <assert.h>

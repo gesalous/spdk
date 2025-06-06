@@ -3,7 +3,7 @@
  *   Copyright (c) Mellanox Technologies LTD. All rights reserved.
  *   Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
-#include "lib/rdma_provider/ptl_print_nvme_commands.h"
+#include "ptl_print_nvme_commands.h"
 #include "portals4.h"
 #include "ptl_cm_id.h"
 #include "ptl_config.h"
@@ -191,6 +191,7 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		// SPDK_PTL_DEBUG("Num of sges are %d", wr->num_sge);
 		recv_op = calloc(1UL, sizeof(*recv_op));
 		recv_op->obj_type = PTL_RECV_OP;
+    recv_op->cq_id = PTL_UUID_TARGET_COMPLETION_QUEUE_ID;
 		for (int i = 0; i < wr->num_sge; i++) {
 			recv_op->io_vector[i].iov_base = (ptl_addr_t)wr->sg_list[i].addr;
 			recv_op->io_vector[i].iov_len = wr->sg_list[i].length;
@@ -625,6 +626,7 @@ static void spdk_rdma_provider_ptl_rdma_write(struct ptl_pd *ptl_pd, struct ptl_
 		send_op->obj_type = PTL_SEND_OP;
 		send_op->wr_id = wr->wr_id;
 		send_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
+    send_op->cq_id = ptl_qp->send_cq->cq_id;
 	}
 
 	local_offset = wr->sg_list[0].addr - (uint64_t)ptl_pd_mem_desc->local_w_mem_desc.start;
@@ -717,6 +719,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				send_op->obj_type = PTL_SEND_OP;
 				send_op->wr_id = wr->wr_id;
 				send_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
+        send_op->cq_id = ptl_qp->send_cq->cq_id;
 			}
 
 			SPDK_PTL_DEBUG(
