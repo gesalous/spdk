@@ -52,7 +52,7 @@
         strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
         fprintf(stderr, "\x1b[31m[PTL_FATAL][%s][%s:%s:%d] " fmt "\x1b[0m\n", \
                 timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
-        raise(SIGINT);                                                        \
+        _exit(EXIT_FAILURE);                                                    \
     } while (0)
 
 #if SPDK_PTL_ENABLE_DEBUG

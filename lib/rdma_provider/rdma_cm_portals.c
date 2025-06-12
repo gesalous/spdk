@@ -364,7 +364,7 @@ static void rdma_ptl_handle_open_conn(struct ptl_cm_id *listen_id,
 	SPDK_PTL_DEBUG("MATCH_BITS: The remote guy has MEs for recv in match_bits: "
 		       "%lu and for RMA: %lu and has subscribed in cq_id: %d",
 		       ptl_id->recv_match_bits, ptl_id->rma_match_bits, ptl_id->remote_cq_id);
-  ptl_id->uuid = ptl_uuid_set_cq_num(ptl_id->uuid, ptl_id->remote_cq_id);
+	ptl_id->uuid = ptl_uuid_set_cq_num(ptl_id->uuid, ptl_id->remote_cq_id);
 
 	rdma_cm_find_matching_local_ip(&ptl_id->fake_cm_id.route.addr.dst_addr,
 				       &ptl_id->fake_cm_id.route.addr.src_addr);
@@ -443,7 +443,7 @@ static void rdma_ptl_handle_open_conn_reply(struct ptl_cm_id *listen_id,
 	connection_id->recv_match_bits = open_conn_reply->srq_match_bits;
 	connection_id->rma_match_bits = UINT64_MAX;
 	connection_id->remote_cq_id = open_conn_reply->cq_id;
-  connection_id->uuid = ptl_uuid_set_cq_num(connection_id->uuid, connection_id->remote_cq_id);
+	connection_id->uuid = ptl_uuid_set_cq_num(connection_id->uuid, connection_id->remote_cq_id);
 	SPDK_PTL_DEBUG("MATCH_BITS: Target match bits for its srq are: %lu setting "
 		       "rma_match_bits to: %lu NO RMA operations from initiator to "
 		       "target allowed. Target waits receive events in cq id: %d",
