@@ -52,6 +52,7 @@ struct ptl_cq *ptl_cq_create(void *cq_context)
 	ptl_cq->cq_static = &cq_static;
 
 	ptl_cq->fake_ibv_cq.context = ptl_cnxt_get_ibv_context(ptl_cnxt_get());
+  SPDK_PTL_DEBUG("Created PtlCQ with id = %d",ptl_cq->cq_id);
 	RDMA_CM_UNLOCK(&cq_static.lock);
 	return ptl_cq;
 }

@@ -679,10 +679,13 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	for (struct ibv_send_wr *wr = spdk_rdma_qp->send_wrs.first; wr != NULL; wr = wr->next) {
 
 		if (wr->num_sge != 1) {
-			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry");
+      for(int i = 0;i<wr->num_sge;i++){
+        SPDK_PTL_DEBUG("Opcode: wr[%d] = %d, addr: %lu length is: %d",i,wr->opcode, wr->sg_list[i].addr, wr->sg_list[i].length);
+      }
+			SPDK_PTL_FATAL("Num sges > 1 are under development, sorry requested are: %d",wr->num_sge);
 		}
 
-		spdk_rdma_print_wr_flags(wr);
+		// spdk_rdma_print_wr_flags(wr);
 		if (wr->opcode == IBV_WR_RDMA_WRITE) {
 
 			spdk_rdma_provider_ptl_rdma_write(ptl_pd, ptl_qp, wr, ptl_uuid_set_match_list(match_bits,
