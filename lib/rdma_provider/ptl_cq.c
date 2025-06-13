@@ -1,4 +1,5 @@
 #include "ptl_cq.h"
+#include "deque.h"
 #include "ptl_config.h"
 #include "ptl_context.h"
 #include "ptl_log.h"
@@ -50,9 +51,10 @@ struct ptl_cq *ptl_cq_create(void *cq_context)
 	ptl_cq->object_type = PTL_CQ;
 	ptl_cq->cq_id = cq_static.cq_next_id++;
 	ptl_cq->cq_static = &cq_static;
+	ptl_cq->pending_completions = deque_create(NULL);
 
 	ptl_cq->fake_ibv_cq.context = ptl_cnxt_get_ibv_context(ptl_cnxt_get());
-  SPDK_PTL_DEBUG("Created PtlCQ with id = %d",ptl_cq->cq_id);
+	SPDK_PTL_DEBUG("Created PtlCQ with id = %d", ptl_cq->cq_id);
 	RDMA_CM_UNLOCK(&cq_static.lock);
 	return ptl_cq;
 }

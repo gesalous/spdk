@@ -9,6 +9,8 @@
 #include <pthread.h>
 #include <stdint.h>
 struct ptl_context;
+struct deque;
+
 struct ptl_cq_singleon_part {
 	ptl_obj_type_e object_type;
 	struct ptl_context *ptl_context;
@@ -24,6 +26,7 @@ struct ptl_cq {
 	struct ptl_cq_singleon_part *cq_static;
 	struct ibv_cq fake_ibv_cq;
 	int cq_id;
+	struct deque *pending_completions;
 	// struct ptl_context *ptl_context;
 	// ptl_handle_eq_t eq_handle;
 	// void *cq_context;
