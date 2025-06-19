@@ -1,8 +1,23 @@
 SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
+include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
+include $(SPDK_ROOT_DIR)/mk/spdk.modules.mk
 
-UNIT_TEST_LINK_ENV = 1
-TEST_FILE = spdk_nvmeof_test.c
+APP = spdk_nvmeof_test
 
-include $(SPDK_ROOT_DIR)/mk/spdk.unittest.mk
+C_SRCS := spdk_nvmeof_test.c
 
-CFLAGS += $(ENV_CFLAGS)
+SPDK_LIB_LIST += $(SOCK_MODULES_LIST) nvme vmd keyring_file
+
+ifeq ($(OS),Linux)
+SYS_LIBS += -laio
+CFLAGS += -DHAVE_LIBAIO
+endif
+
+include $(SPDK_ROOT_DIR)/mk/spdk.app.mk
+
+install: $(APP)
+	$(INSTALL_APP)
+
+uninstall:
+	$(UNINSTALL_APP)
+
