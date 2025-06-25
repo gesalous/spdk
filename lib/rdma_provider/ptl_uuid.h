@@ -6,7 +6,7 @@
 /* In a nutshell 1 is reserved for target srq and 2 for RMA operations to the initiator*/
 #define PTL_UUID_TARGET_SRQ_MATCH_BITS 0x0001000000000000UL
 #define PTL_UUID_RMA_MASK              0x0002000000000000UL
-#define PTL_UUID_TARGET_COMPLETION_QUEUE_ID  1
+#define PTL_UUID_TARGET_COMPLETION_QUEUE_ID  0
 
 #define PTL_UUID_SEND_RECV_MASK 0x4000000000000000UL
 
