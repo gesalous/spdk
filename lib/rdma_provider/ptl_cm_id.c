@@ -83,7 +83,7 @@ void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
 	uint64_t result;
 	if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
 		perror("read");
-		SPDK_PTL_FATAL("Failed to write event");
+		SPDK_PTL_WARN("Failed to write event");
 	}
 	rdma_cm_ptl_event_channel_unlock_event_deque(ptl_id->ptl_channel);
 }

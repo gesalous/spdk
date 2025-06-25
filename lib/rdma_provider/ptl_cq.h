@@ -8,8 +8,11 @@
 #include <portals4.h>
 #include <pthread.h>
 #include <stdint.h>
+#define PTL_CQ_MAX_QUEUES 256UL
 struct ptl_context;
 struct deque;
+
+
 
 struct ptl_cq_singleon_part {
 	ptl_obj_type_e object_type;
@@ -27,12 +30,16 @@ struct ptl_cq {
 	struct ibv_cq fake_ibv_cq;
 	int cq_id;
 	struct deque *pending_completions;
+	bool is_in_use;
 	// struct ptl_context *ptl_context;
 	// ptl_handle_eq_t eq_handle;
 	// void *cq_context;
 	// pthread_mutex_t lock;
 	// bool initialized;
 };
+extern struct ptl_cq ptl_cq_array[PTL_CQ_MAX_QUEUES];
+
+struct ptl_cq *ptl_cq_get(int ptl_cq_id);
 
 struct ptl_cq *ptl_cq_create(void *cq_context);
 // struct ptl_cq *ptl_cq_get_instance(void *cq_context);

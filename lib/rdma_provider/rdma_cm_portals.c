@@ -979,7 +979,7 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 
 	SPDK_PTL_DEBUG("IBVPTL: Ok trapped ibv_create_cq time to create the event queue in portals");
 	struct ptl_cq *ptl_cq = ptl_cq_create(cq_context);
-	SPDK_PTL_DEBUG("Ok set up event queue for PORTALS :-) CQ id = %d", ptl_cq->cq_id);
+	SPDK_PTL_DEBUG("PtlCQ: Ok set up event queue for PORTALS :-) CQ id = %d", ptl_cq->cq_id);
 	return ptl_cq_get_ibv_cq(ptl_cq);
 }
 
@@ -1054,8 +1054,17 @@ int rdma_listen(struct rdma_cm_id *id, int backlog)
 {
 	struct ptl_cm_id * ptl_id = ptl_cm_id_get(id);
 	ptl_id->is_listen_id = true;
+	/**
+	* Issue: The upper layer of the NVMe-oF target creates a single ibv_cq, but the
+	* listen_id doesn't contain the necessary information to determine to which ptl_cq
+	* each generated queue pair should report to.
+	*
+	* Current workaround: Search the ptl context for the reference to cq_id 0,
+	* which should have its in-use flag already set to true.
+	*/
+
 	if (ptl_id->cq == NULL) {
-		ptl_id->cq = ptl_cq_create(ptl_cnxt_get());
+		ptl_id->cq = ptl_cq_get(PTL_UUID_TARGET_COMPLETION_QUEUE_ID);
 	}
 
 	// struct rdma_cm_event *fake_event;
@@ -1623,8 +1632,8 @@ int rdma_disconnect(struct rdma_cm_id *id)
 int ibv_destroy_cq(struct ibv_cq *cq)
 {
 	struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(cq);
-	SPDK_PTL_DEBUG("CAUTION, ignore this XXX TODO XXX");
-	free(ptl_cq);
+	SPDK_PTL_DEBUG("PtlCQ: destroy CAUTION, ignore this XXX TODO XXX");
+	ptl_cq->is_in_use = false;
 	return 0;
 }
 
