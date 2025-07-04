@@ -436,14 +436,14 @@ spdk_rdma_provider_qp_accept(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	SPDK_PTL_DEBUG("CONN_PARAM: At accept got a valid ptl_id queue pair id: %d conn_param len: %u",
 		       ptl_id->fake_cm_id.qp->qp_num, conn_param->private_data_len);
 
-	SPDK_ERRLOG("GESALOUSTRA: CONN_PARAM sending to the target the following shit\n");
-	SPDK_ERRLOG("GESALOUSTRA: CONN_PARAM param.srq = %u param.qp_num = %u "
-		    "param.rnr_retry_count = %u param.responder_resources: %u "
-		    "param.initiator_depth: %u param.flow_control: %u "
-		    "param.private_data_len: %u\n",
-		    conn_param->srq, conn_param->qp_num, conn_param->rnr_retry_count,
-		    conn_param->responder_resources, conn_param->initiator_depth,
-		    conn_param->flow_control, conn_param->private_data_len);
+	SPDK_PTL_DEBUG("CONN_PARAM sending to the target the following parameters");
+	SPDK_PTL_DEBUG("CONN_PARAM param.srq = %u param.qp_num = %u "
+		       "param.rnr_retry_count = %u param.responder_resources: %u "
+		       "param.initiator_depth: %u param.flow_control: %u "
+		       "param.private_data_len: %u\n",
+		       conn_param->srq, conn_param->qp_num, conn_param->rnr_retry_count,
+		       conn_param->responder_resources, conn_param->initiator_depth,
+		       conn_param->flow_control, conn_param->private_data_len);
 	return rdma_accept(spdk_rdma_qp->cm_id, conn_param);
 }
 

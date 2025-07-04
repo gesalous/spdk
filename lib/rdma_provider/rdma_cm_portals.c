@@ -1119,7 +1119,7 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 		// }
 		return 0;
 	}
-	// SPDK_PTL_DEBUG("Got nothing shit EAGAIN!");
+	// SPDK_PTL_DEBUG("Got EAGAIN!");
 	errno = EAGAIN;
 	return EAGAIN;
 }

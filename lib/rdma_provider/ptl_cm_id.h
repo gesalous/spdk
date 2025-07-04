@@ -50,7 +50,7 @@ struct ptl_cm_id {
 	struct ptl_cq *cq;
 	bool is_listen_id;
 	struct rdma_conn_param conn_param;
-	//needed for connection setup and shit
+	//needed for connection setup
 	const void *fake_data;
 };
 

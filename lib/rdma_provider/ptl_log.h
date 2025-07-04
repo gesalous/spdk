@@ -62,7 +62,7 @@
         struct tm *tm = localtime(&t);                                        \
         char timestamp[32];                                                   \
         strftime(timestamp, sizeof(timestamp), "%Y-%m-%d %H:%M:%S", tm);      \
-        fprintf(stderr, "\x1b[34m[PTL_CORE][%s][%s:%s:%d] GESALOUSTRA " fmt "\x1b[0m\n", \
+        fprintf(stderr, "\x1b[34m[PTL_CORE][%s][%s:%s:%d] CORE_SPDK " fmt "\x1b[0m\n", \
                 timestamp, __FILE__, __func__, __LINE__, ##__VA_ARGS__);      \
     } while (0)
 #else
