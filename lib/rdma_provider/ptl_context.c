@@ -81,18 +81,45 @@ static bool ptl_cnxt_process_put(ptl_event_t event, struct ibv_wc *wc, struct pt
 			event.start, event.rlength, recv_op->io_vector[0].iov_base,
 			recv_op->io_vector[0].iov_len, event.pt_index);
 	}
+	
+ //  if (event.start != recv_op->io_vector[0].iov_base) {
+	// 	SPDK_PTL_FATAL(
+	// 		"Corrupted receive event.start: %p event.legnth: %lu "
+	// 		"iovector[0] = %p iovector size[0] = %lu pte: %d",
+	// 		event.start, event.rlength, recv_op->io_vector[0].iov_base,
+	// 		recv_op->io_vector[0].iov_len, event.pt_index);
+	// }
 
 	recv_op->initiator_qp_num =  ptl_uuid_get_initiator_qp_num(event.match_bits);
 	recv_op->target_qp_num = ptl_uuid_get_target_qp_num(event.match_bits);
+
 	if (event.rlength != 64 && event.rlength != 16) {
 		SPDK_PTL_FATAL("Wrong size, should have been either 64 B (NVMe command "
 			       "size) or 16 B (NVMe response) size it is: %lu",
 			       event.rlength);
 	}
+	if (recv_op->initiator_qp_num == 0 || recv_op->target_qp_num == 0) {
+		SPDK_PTL_FATAL("Nida does not assign 0 qp num initiator = %d target = %d",
+			       recv_op->initiator_qp_num, recv_op->target_qp_num);
+	}
 	recv_op->bytes_received = event.rlength;
+  //debug
+  recv_op->reveive_done = true;
 
+	SPDK_PTL_DEBUG("OK: \n%d",
+		       recv_op->bytes_received == 64
+		       ? ptl_print_nvme_cmd(recv_op->io_vector[0].iov_base,
+					    "NVMe-cmd-recv-ptl-put-vec[0]")
+		       : ptl_print_nvme_cpl(recv_op->io_vector[0].iov_base,
+					    "NVMe-cpl-recv-ptl-put-vec[0]"));
 
-	return false;
+	// SPDK_PTL_DEBUG("OK: \n%d",
+	// 	       recv_op->bytes_received == 64
+	// 	       ? ptl_print_nvme_cmd(event.start,
+	// 				    "NVMe-cmd-recv-ptl-put-start")
+	// 	       : ptl_print_nvme_cpl(event.start,
+	// 				    "NVMe-cpl-recv-ptl-put-start"));
+		return false;
 }
 
 static bool ptl_cnxt_process_put_overflow(ptl_event_t event, struct ibv_wc *wc,
@@ -179,6 +206,7 @@ static bool ptl_cnxt_process_reply(ptl_event_t event, struct ibv_wc *wc, struct 
 			       "event is for: %d, keep it to serve it later",
 			       ptl_cq->cq_id, rdma_read_op->cq_id);
 		ptl_cnxt_keep_event(&ptl_cq_array[rdma_read_op->cq_id], wc);
+		free(rdma_read_op);
 		return false;
 	}
 	SPDK_PTL_DEBUG("PtlCQ: OK with rdma_read_op->cq_id = %d", rdma_read_op->cq_id);
@@ -231,7 +259,7 @@ static bool ptl_cnxt_process_ack(ptl_event_t event, struct ibv_wc *wc, struct pt
 		ptl_cnxt_keep_event(&ptl_cq_array[send_op->cq_id], wc);
 		return false;
 	}
-	SPDK_PTL_DEBUG("PtlCQ: OK with send_op: %d", send_op->cq_id);
+	// SPDK_PTL_DEBUG("PtlCQ: OK with send_op: %d", send_op->cq_id);
 	free(send_op);
 	return true;
 }
@@ -253,21 +281,21 @@ static bool ptl_cnxt_process_auto_unlink(ptl_event_t event, struct ibv_wc *wc,
 		SPDK_PTL_FATAL("Unlink event must have an associated user context");
 	}
 
-	recv_op = event.user_ptr;
+  recv_op = event.user_ptr;
+  if(false == recv_op->reveive_done){
+    SPDK_PTL_FATAL("AUTO_UNLINK without a prior receive!");
+  }
 
 	if (recv_op->obj_type != PTL_RECV_OP) {
 		SPDK_PTL_FATAL("Corrupted recv_op");
 	}
 
-	if (recv_op->bytes_received == 64) {
-		// if(recv_op->target_qp_num == 3){
-		//   struct spdk_nvme_cmd *cmd = recv_op->io_vector[0].iov_base;
-		//   cmd->opc = UINT16_MAX;
-		// }
-		ptl_print_nvme_cmd(recv_op->io_vector[0].iov_base, "NVMe-cmd-recv");
-	} else {
-		ptl_print_nvme_cpl(recv_op->io_vector[0].iov_base, "NVMe-cpl-recv");
-	}
+	SPDK_PTL_DEBUG("At AUTO_UNLINK OK: \n%d",
+		       recv_op->bytes_received == 64
+		       ? ptl_print_nvme_cmd(recv_op->io_vector[0].iov_base,
+					    "NVMe-cmd-recv-auto-unlink")
+		       : ptl_print_nvme_cpl(recv_op->io_vector[0].iov_base,
+					    "NVMe-cpl-recv-auto-unlink"));
 	memset(wc, 0x00, sizeof(*wc));
 
 	if (event.ni_fail_type != PTL_NI_OK) {

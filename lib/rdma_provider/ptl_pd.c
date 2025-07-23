@@ -43,7 +43,7 @@ local:
 		if ((uint64_t)ptl_pd->ptl_mem_desc[i]->local_w_mem_desc.start <= address &&
 		    (uint64_t)end_address <= (uint64_t)ptl_pd->ptl_mem_desc[i]->local_w_mem_desc.start +
 		    ptl_pd->ptl_mem_desc[i]->local_w_mem_desc.length) {
-			SPDK_PTL_DEBUG("Found mem desc for portals!");
+			SPDK_PTL_DEBUG("Found *LOCAL* mem desc for portals!");
 			return ptl_pd->ptl_mem_desc[i];
 		}
 	}

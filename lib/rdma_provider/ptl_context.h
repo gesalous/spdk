@@ -10,12 +10,14 @@
 struct ptl_context;
 struct ibv_context;
 struct ibv_pd;
+
 struct ptl_context_recv_op {
 	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
 	uint64_t bytes_received;
 	int initiator_qp_num;
 	int target_qp_num;
+  bool reveive_done;
 	/*In which cqid I wait for the receive event*/
 	int cq_id;
 	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];

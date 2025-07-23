@@ -6,12 +6,12 @@
 #include <stdio.h>
 #include <string.h>
 // Function to print NVMe command in human-readable format
-void ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix)
+int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix)
 {
 	const char *command;
 	if (!cmd) {
 		SPDK_PTL_DEBUG("NVMe-cmd: NULL command");
-		return;
+		return 1;
 	}
 	// Interpret common opcodes
 	switch (cmd->opc) {
@@ -77,14 +77,15 @@ void ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix)
 	SPDK_PTL_DEBUG("%s:  PSDT: %u\n", prefix, cmd->psdt);
 	SPDK_PTL_DEBUG("%s:  CDW10-15: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x", prefix,
 		       cmd->cdw10, cmd->cdw11, cmd->cdw12, cmd->cdw13, cmd->cdw14, cmd->cdw15);
+  return 1;
 }
 
 // Function to print NVMe completion in human-readable format
-void ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix)
+int ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix)
 {
 	if (!cpl) {
 		SPDK_PTL_DEBUG("NVMe-cpl: NULL completion");
-		return;
+		return 1;
 	}
 
 	SPDK_PTL_DEBUG("NVMe-cpl: Completion Status: 0x%04x", cpl->status_raw);
@@ -102,6 +103,10 @@ void ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix)
 		case SPDK_NVME_SC_INVALID_FIELD:
 			SPDK_PTL_DEBUG("%s:  Status Code: Invalid Field (0x%x)", prefix, cpl->status.sc);
 			break;
+    case SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT:
+			SPDK_PTL_DEBUG("%s:  Status Code: Invalid Namespace or FORMAT (0x%x)", prefix, cpl->status.sc);
+      break;
+
 		default:
 			SPDK_PTL_DEBUG("%s:  Status Code: Unknown (0x%x)", prefix, cpl->status.sc);
 			break;
@@ -116,5 +121,6 @@ void ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix)
 	SPDK_PTL_DEBUG("%s:  SQID: %u", prefix, cpl->sqid);
 	SPDK_PTL_DEBUG("%s:  SQHD: %u", prefix, cpl->sqhd);
 	SPDK_PTL_DEBUG("%s:  Result Data: 0x%08x", prefix, cpl->cdw0);
+  return 1;
 }
 

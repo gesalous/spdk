@@ -1109,7 +1109,7 @@ int rdma_get_cm_event(struct rdma_event_channel *channel,
 
 	if (fake_event) {
 		ptl_id = ptl_cm_id_get(fake_event->id);
-		SPDK_PTL_DEBUG("(nikos) OK got event of type: %d for qp num: %d from channel: %p",
+		SPDK_PTL_DEBUG("OK got event of type: %d for qp num: %d from channel: %p",
 			       fake_event->event, ptl_id->ptl_qp_num, ptl_channel);
 		/* Clean the event*/
 		// uint64_t result;
@@ -1551,7 +1551,6 @@ int rdma_accept(struct rdma_cm_id *id, struct rdma_conn_param *conn_param)
 
 int rdma_disconnect(struct rdma_cm_id *id)
 {
-	return 0;
 	struct rdma_ptl_send_buffer *conn_close_request;
 	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
 	struct ptl_context *ptl_cnxt = ptl_cnxt_get();
