@@ -1808,6 +1808,7 @@ post_completion(struct nvmf_vfio_user_ctrlr *ctrlr, struct nvmf_vfio_user_cq *cq
 		      *sq_headp(ctrlr->sqs[sqid]), *cq_tailp(cq));
 
 	cpl->sqhd = *sq_headp(ctrlr->sqs[sqid]);
+  raise(SIGINT);
 	cpl->sqid = sqid;
 	cpl->cid = cid;
 	cpl->cdw0 = cdw0;

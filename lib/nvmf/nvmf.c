@@ -17,7 +17,8 @@
 
 #include "nvmf_internal.h"
 #include "transport.h"
-
+/*gesalous*/
+#include "../rdma_provider/ptl_log.h"
 SPDK_LOG_REGISTER_COMPONENT(nvmf)
 
 #define SPDK_NVMF_DEFAULT_MAX_SUBSYSTEMS 1024
@@ -141,6 +142,8 @@ nvmf_qpair_set_state(struct spdk_nvmf_qpair *qpair,
 {
 	assert(qpair != NULL);
 	assert(qpair->group->thread == spdk_get_thread());
+  // if(state == SPDK_NVMF_QPAIR_ERROR)
+  //   raise(SIGINT);
 
 	qpair->state = state;
 }
@@ -1095,6 +1098,7 @@ spdk_nvmf_tgt_find_subsystem(struct spdk_nvmf_tgt *tgt, const char *subnqn)
 	}
 
 	snprintf(subsystem.subnqn, sizeof(subsystem.subnqn), "%s", subnqn);
+  SPDK_PTL_CORE("subsystem is: %s\n",subsystem.subnqn);
 	return RB_FIND(subsystem_tree, &tgt->subsystems, &subsystem);
 }
 
@@ -1293,7 +1297,7 @@ spdk_nvmf_poll_group_remove(struct spdk_nvmf_qpair *qpair)
 	int rc;
 
 	SPDK_DTRACE_PROBE2_TICKS(nvmf_poll_group_remove_qpair, qpair,
-				 spdk_thread_get_id(qpair->group->thread));
+				 spdk_thread_get_id(qpair->group->thread))
 	nvmf_qpair_set_state(qpair, SPDK_NVMF_QPAIR_ERROR);
 
 	/* Find the tgroup and remove the qpair from the tgroup */
@@ -1381,6 +1385,7 @@ _nvmf_qpair_disconnect_msg(void *ctx)
 int
 spdk_nvmf_qpair_disconnect(struct spdk_nvmf_qpair *qpair)
 {
+  // raise(SIGINT);
 	struct spdk_nvmf_poll_group *group = qpair->group;
 	struct nvmf_qpair_disconnect_ctx *qpair_ctx;
 

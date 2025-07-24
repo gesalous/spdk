@@ -11,7 +11,10 @@
 #include "nvme_internal.h"
 
 #include "spdk/endian.h"
+#include "spdk/nvme_spec.h"
 #include "spdk/string.h"
+/*gesalous*/
+#include "../rdma_provider/ptl_log.h"
 
 struct nvme_fabric_prop_ctx {
 	uint64_t		value;
@@ -383,6 +386,7 @@ nvme_fabric_ctrlr_scan(struct spdk_nvme_probe_ctx *probe_ctx,
 	struct spdk_nvme_ctrlr *discovery_ctrlr;
 	int rc;
 	struct nvme_completion_poll_status *status;
+  SPDK_PTL_CORE("Manos direct connected? = %s", direct_connect ? "TRUE":"FALSE");
 
 	if (strcmp(probe_ctx->trid.subnqn, SPDK_NVMF_DISCOVERY_NQN) != 0) {
 		/* It is not a discovery_ctrlr info and try to directly connect it */
@@ -446,7 +450,10 @@ nvme_fabric_ctrlr_scan(struct spdk_nvme_probe_ctx *probe_ctx,
 	}
 
 	rc = nvme_fabric_ctrlr_discover(discovery_ctrlr, probe_ctx);
+
+  SPDK_PTL_CORE("Manos rc = %d",rc);
 	nvme_ctrlr_destruct(discovery_ctrlr);
+
 	return rc;
 }
 
@@ -596,6 +603,9 @@ nvme_fabric_qpair_connect_poll(struct spdk_nvme_qpair *qpair)
 	}
 
 	if (status->timed_out || spdk_nvme_cpl_is_error(&status->cpl)) {
+    SPDK_PTL_CORE("(HOT) Is the failure due to timeout? :%s",status->timed_out?"YES":"NO");
+    SPDK_PTL_CORE("(HOT) Is the failure due to a cpl error? :%s",spdk_nvme_cpl_is_error(&status->cpl)?"YES":"NO");
+
 		SPDK_ERRLOG("Connect command failed, rc %d, trtype:%s adrfam:%s "
 			    "traddr:%s trsvcid:%s subnqn:%s\n",
 			    status->timed_out ? -ECANCELED : -EIO,

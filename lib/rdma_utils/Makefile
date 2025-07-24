@@ -30,7 +30,13 @@ endif
 #original
 #C_SRCS = rdma_utils.c
 
-LOCAL_SYS_LIBS += -libverbs -lrdmacm
+ifeq ($(CONFIG_RDMA_PROV),portals)
+	LOCAL_SYS_LIBS += -L$(RDMA_CM_PORTALS_PREFIX) -lrdmacm -libverbs
+else
+	LOCAL_SYS_LIBS += -libverbs -lrdmacm
+endif
+
+
 #Attach only if FreeBSD and RDMA is specified with configure
 ifeq ($(OS),FreeBSD)
 # Mellanox - MLX4 HBA Userspace Library

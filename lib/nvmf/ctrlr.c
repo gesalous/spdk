@@ -23,6 +23,17 @@
 #include "spdk/log.h"
 #include "spdk_internal/usdt.h"
 
+// <<<<<<< Updated upstream
+// =======
+/*gesalous*/
+#include "../rdma_provider/ptl_log.h"
+
+// #define MIN_KEEP_ALIVE_TIMEOUT_IN_MS 10000
+// #define NVMF_DISC_KATO_IN_MS 120000
+// #define KAS_TIME_UNIT_IN_MS 100
+// #define KAS_DEFAULT_VALUE (MIN_KEEP_ALIVE_TIMEOUT_IN_MS / KAS_TIME_UNIT_IN_MS)
+
+// >>>>>>> Stashed changes
 #define NVMF_CC_RESET_SHN_TIMEOUT_IN_MS	10000
 
 #define NVMF_CTRLR_RESET_SHN_TIMEOUT_IN_MS	(NVMF_CC_RESET_SHN_TIMEOUT_IN_MS + 5000)
@@ -57,6 +68,7 @@ static inline void
 nvmf_invalid_connect_response(struct spdk_nvmf_fabric_connect_rsp *rsp,
 			      uint8_t iattr, uint16_t ipo)
 {
+  SPDK_PTL_CORE("*Got it!*");
 	rsp->status.sct = SPDK_NVME_SCT_COMMAND_SPECIFIC;
 	rsp->status.sc = SPDK_NVMF_FABRIC_SC_INVALID_PARAM;
 	rsp->status_code_specific.invalid.iattr = iattr;
@@ -172,6 +184,7 @@ nvmf_ctrlr_keep_alive_poll(void *ctx)
 	keep_alive_timeout_tick = ctrlr->last_keep_alive_tick +
 				  ctrlr->feat.keep_alive_timer.bits.kato * spdk_get_ticks_hz() / UINT64_C(1000);
 	if (now > keep_alive_timeout_tick) {
+    SPDK_PTL_CORE("now is %lu keep_alive_timeout_tick is: %lu",now, keep_alive_timeout_tick);
 		SPDK_NOTICELOG("Disconnecting host %s from subsystem %s due to keep alive timeout.\n",
 			       ctrlr->hostnqn, ctrlr->subsys->subnqn);
 		/* set the Controller Fatal Status bit to '1' */
@@ -2753,6 +2766,7 @@ _nvmf_ctrlr_get_ns_safe(struct spdk_nvmf_ctrlr *ctrlr,
 		SPDK_ERRLOG("Identify Namespace for invalid NSID %u\n", nsid);
 		rsp->status.sct = SPDK_NVME_SCT_GENERIC;
 		rsp->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		return NULL;
 	}
 
@@ -3104,6 +3118,7 @@ spdk_nvmf_ns_identify_iocs_specific(struct spdk_nvmf_ctrlr *ctrlr,
 	if (ns == NULL) {
 		rsp->status.sct = SPDK_NVME_SCT_GENERIC;
 		rsp->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
 
@@ -3213,6 +3228,7 @@ nvmf_ctrlr_identify_active_ns_list(struct spdk_nvmf_ctrlr *ctrlr,
 	if (cmd->nsid >= 0xfffffffeUL) {
 		SPDK_ERRLOG("Identify Active Namespace List with invalid NSID %u\n", cmd->nsid);
 		rsp->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
 
@@ -3276,6 +3292,7 @@ nvmf_ctrlr_identify_ns_id_descriptor_list(
 	if (ns == NULL || ns->bdev == NULL) {
 		rsp->status.sct = SPDK_NVME_SCT_GENERIC;
 		rsp->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
 
@@ -4533,7 +4550,9 @@ nvmf_ctrlr_process_io_cmd(struct spdk_nvmf_request *req)
 	ns = nvmf_ctrlr_get_ns(ctrlr, nsid);
 	if (spdk_unlikely(ns == NULL || ns->bdev == NULL)) {
 		SPDK_DEBUGLOG(nvmf, "Unsuccessful query for nsid %u\n", cmd->nsid);
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		response->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		response->status.dnr = 1;
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
@@ -4850,6 +4869,7 @@ nvmf_check_subsystem_active(struct spdk_nvmf_request *req)
 		if (spdk_unlikely(nsid - 1 >= sgroup->num_ns)) {
 			req->rsp->nvme_cpl.status.sct = SPDK_NVME_SCT_GENERIC;
 			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+      SPDK_PTL_CORE("INVALID NS ERROR nsid is: %u",nsid);
 			req->rsp->nvme_cpl.status.dnr = 1;
 			TAILQ_INSERT_TAIL(&qpair->outstanding, req, link);
 			_nvmf_request_complete(req);
@@ -4864,6 +4884,7 @@ nvmf_check_subsystem_active(struct spdk_nvmf_request *req)
 			 */
 			req->rsp->nvme_cpl.status.sct = SPDK_NVME_SCT_GENERIC;
 			req->rsp->nvme_cpl.status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+      SPDK_PTL_CORE("INVALID NS ERROR");
 			req->rsp->nvme_cpl.status.dnr = 1;
 			TAILQ_INSERT_TAIL(&qpair->outstanding, req, link);
 			ns_info->io_outstanding++;
@@ -5046,7 +5067,8 @@ nvmf_passthru_admin_cmd_for_bdev_nsid(struct spdk_nvmf_request *req, uint32_t bd
 	rc = spdk_nvmf_request_get_bdev(bdev_nsid, req, &bdev, &desc, &ch);
 	if (rc) {
 		response->status.sct = SPDK_NVME_SCT_GENERIC;
-		response->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+		response->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT; 
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
 
@@ -5086,6 +5108,7 @@ nvmf_passthru_admin_cmd_for_ctrlr(struct spdk_nvmf_request *req, struct spdk_nvm
 		/* Is there a better sc to use here? */
 		response->status.sct = SPDK_NVME_SCT_GENERIC;
 		response->status.sc = SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT;
+    SPDK_PTL_CORE("INVALID NS ERROR");
 		return SPDK_NVMF_REQUEST_EXEC_STATUS_COMPLETE;
 	}
 

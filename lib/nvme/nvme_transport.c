@@ -10,6 +10,7 @@
  */
 
 #include "nvme_internal.h"
+#include "spdk/log.h"
 #include "spdk/queue.h"
 
 #define SPDK_MAX_NUM_OF_TRANSPORTS 16
@@ -498,9 +499,11 @@ nvme_transport_ctrlr_connect_qpair(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nv
 {
 	const struct spdk_nvme_transport *transport = nvme_get_transport(ctrlr->trid.trstring);
 	int rc;
+  SPDK_ERRLOG("GESALOUSTRA: NVME_CONNECT_QPAIR....\n");
 
 	assert(transport != NULL);
 	if (!nvme_qpair_is_admin_queue(qpair) && qpair->transport == NULL) {
+    SPDK_ERRLOG("NVME_CONNECT_QPAIR\n");
 		qpair->transport = transport;
 	}
 
@@ -508,6 +511,7 @@ nvme_transport_ctrlr_connect_qpair(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nv
 	qpair->transport_failure_reason = SPDK_NVME_QPAIR_FAILURE_NONE;
 
 	nvme_qpair_set_state(qpair, NVME_QPAIR_CONNECTING);
+
 	rc = transport->ops.ctrlr_connect_qpair(ctrlr, qpair);
 	if (rc != 0) {
 		goto err;
@@ -536,9 +540,13 @@ nvme_transport_ctrlr_connect_qpair(struct spdk_nvme_ctrlr *ctrlr, struct spdk_nv
 			}
 		}
 	}
-
+  
+  SPDK_ERRLOG("NVME_CONNECT_QPAIR COMPLETE!\n");
 	return 0;
 err:
+  SPDK_ERRLOG("NVME_CONNECT_QPAIR COMPLETE with ERROR\n");
+
+  SPDK_ERRLOG("NVME_CONNECT_QPAIR\n");
 	nvme_transport_connect_qpair_fail(qpair, NULL);
 	if (nvme_qpair_get_state(qpair) == NVME_QPAIR_DISCONNECTING) {
 		assert(qpair->async == true);

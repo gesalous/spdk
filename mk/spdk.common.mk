@@ -7,10 +7,16 @@
 #  Copyright (c) 2022 Dell Inc, or its subsidiaries.
 #
 
-# Portals configuration
-PORTALS_LIB_PREFIX ?= /home1/private/gesalous/portails4/build/portals
-PORTALS_INCLUDE_PREFIX ?= /home1/private/gesalous/portails4/portals/include
-RDMA_CM_PORTALS_PREFIX ?= /home1/private/gesalous/spdk/lib/rdma_provider/
+# Portals configuration, where Portals library is installed
+#PORTALS_LIB_PREFIX ?= /lib64
+PORTALS_LIB_PREFIX ?= /home1/private/gesalous/portails4/build/portals/
+#Where the portals4.h header is located
+#PORTALS_INCLUDE_PREFIX ?= /usr/include
+PORTALS_INCLUDE_PREFIX ?= /home1/private/gesalous/portails4/portals/include/
+#Where the rdmacm lib over portals and the mockup verbs implementation library is.
+RDMA_CM_PORTALS_PREFIX ?= $(SPDK_ROOT_DIR)/lib/rdma_provider/
+#gesalous this is for Rocky Linux 8.2 which do not have libcunit devel package
+CUINIT_PREFIX ?= /usr/lib64/lib
 
 ifeq ($(wildcard $(SPDK_ROOT_DIR)/mk/config.mk),)
 $(error mk/config.mk: file not found. Please run configure before make)
@@ -171,9 +177,14 @@ SYS_LIBS += -libverbs -lrdmacm
 #gesalous
 LDFLAGS += -Wl,-rpath=$(PORTALS_LIB_PREFIX)
 LDFLAGS += -Wl,-rpath=$(RDMA_CM_PORTALS_PREFIX)
+
 SYS_LIBS += -L$(PORTALS_LIB_PREFIX) -lportals
-SYS_LIBS += -L$(RDMA_CM_PORTALS_PREFIX) -lrdmacmportals
+# SYS_LIBS += -L$(RDMA_CM_PORTALS_PREFIX) -lrdmacmportals
 endif
+
+#gesalous this is for Rocky Linux 8.2 which do not have libcunit devel package
+LDFLAGS += -Wl,-rpath=$(CUINIT_PREFIX)
+SYS_LIBS += -L$(CUINIT_PREFIX) -lcunit
 
 ifeq ($(CONFIG_URING),y)
 SYS_LIBS += -luring

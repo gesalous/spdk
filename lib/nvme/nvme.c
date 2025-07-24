@@ -4,11 +4,15 @@
  */
 
 #include "spdk/config.h"
+#include "spdk/log.h"
 #include "spdk/nvmf_spec.h"
 #include "spdk/string.h"
 #include "spdk/env.h"
 #include "nvme_internal.h"
 #include "nvme_io_msg.h"
+#include <stdlib.h>
+/*<gesalous>*/
+#include "../rdma_provider/ptl_log.h"
 
 #define SPDK_NVME_DRIVER_NAME "spdk_nvme_driver"
 
@@ -248,6 +252,7 @@ nvme_wait_for_completion_robust_lock_timeout_poll(struct spdk_nvme_qpair *qpair,
 	}
 
 	if (qpair->poll_group) {
+    SPDK_PTL_CORE("(HOT) Polling this group thing");
 		rc = (int)spdk_nvme_poll_group_process_completions(qpair->poll_group->group, 0,
 				dummy_disconnected_qpair_cb);
 	} else {
@@ -259,6 +264,7 @@ nvme_wait_for_completion_robust_lock_timeout_poll(struct spdk_nvme_qpair *qpair,
 	}
 
 	if (rc < 0) {
+    SPDK_PTL_CORE("(HOT): Got rc < 0. This does not look good");
 		status->cpl.status.sct = SPDK_NVME_SCT_GENERIC;
 		status->cpl.status.sc = SPDK_NVME_SC_ABORTED_SQ_DELETION;
 		goto error;
@@ -705,6 +711,7 @@ nvme_ctrlr_poll_internal(struct spdk_nvme_ctrlr *ctrlr,
 
 	if (rc) {
 		/* Controller failed to initialize. */
+    SPDK_PTL_CORE("BUG Poulo controller failed to initialize");
 		TAILQ_REMOVE(&probe_ctx->init_ctrlrs, ctrlr, tailq);
 		SPDK_ERRLOG("Failed to initialize SSD: %s\n", ctrlr->trid.traddr);
 		probe_ctx->attach_fail_cb(probe_ctx->cb_ctx, &ctrlr->trid, rc);
@@ -892,10 +899,11 @@ static void
 nvme_dummy_attach_fail_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 			  int rc)
 {
-	SPDK_ERRLOG("Failed to attach nvme ctrlr: trtype=%s adrfam=%s traddr=%s trsvcid=%s "
-		    "subnqn=%s, %s\n", spdk_nvme_transport_id_trtype_str(trid->trtype),
+	SPDK_PTL_CORE("Failed to attach nvme ctrlr: trtype=%s adrfam=%s traddr=%s trsvcid=%s "
+		    "subnqn=%s, %s", spdk_nvme_transport_id_trtype_str(trid->trtype),
 		    spdk_nvme_transport_id_adrfam_str(trid->adrfam), trid->traddr, trid->trsvcid,
 		    trid->subnqn, spdk_strerror(-rc));
+  raise(SIGINT);
 }
 
 static void
@@ -940,10 +948,13 @@ spdk_nvme_probe_ext(const struct spdk_nvme_transport_id *trid, void *cb_ctx,
 	struct spdk_nvme_probe_ctx *probe_ctx;
 
 	if (trid == NULL) {
+    SPDK_PTL_CORE("TRID not set!");
+    _exit(EXIT_FAILURE);
 		memset(&trid_pcie, 0, sizeof(trid_pcie));
 		spdk_nvme_trid_populate_transport(&trid_pcie, SPDK_NVME_TRANSPORT_PCIE);
 		trid = &trid_pcie;
 	}
+
 
 	probe_ctx = spdk_nvme_probe_async_ext(trid, cb_ctx, probe_cb,
 					      attach_cb, attach_fail_cb, remove_cb);
@@ -952,6 +963,7 @@ spdk_nvme_probe_ext(const struct spdk_nvme_transport_id *trid, void *cb_ctx,
 		return -1;
 	}
 
+  SPDK_PTL_CORE("Successfully created probe context for trid = %s let's initialize nvme controllers",trid->trstring);
 	/*
 	 * Keep going even if one or more nvme_attach() calls failed,
 	 *  but maintain the value of rc to signal errors when we return.
@@ -1623,12 +1635,14 @@ spdk_nvme_probe_poll_async(struct spdk_nvme_probe_ctx *probe_ctx)
 	}
 
 	TAILQ_FOREACH_SAFE(ctrlr, &probe_ctx->init_ctrlrs, tailq, ctrlr_tmp) {
+    SPDK_PTL_CORE("Polling the controller for the probe_ctx");
 		nvme_ctrlr_poll_internal(ctrlr, probe_ctx);
 	}
 
 	/* poll failed controllers destruction */
 	TAILQ_FOREACH_SAFE(detach_ctx, &probe_ctx->failed_ctxs.head, link, detach_ctx_tmp) {
 		rc = nvme_ctrlr_destruct_poll_async(detach_ctx->ctrlr, detach_ctx);
+    SPDK_PTL_CORE("Polling the destruction of failed controllers");
 		if (rc == -EAGAIN) {
 			continue;
 		}

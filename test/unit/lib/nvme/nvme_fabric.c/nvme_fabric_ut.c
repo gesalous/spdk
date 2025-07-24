@@ -91,9 +91,9 @@ nvme_wait_for_completion_robust_lock_timeout_poll(struct spdk_nvme_qpair *qpair,
 	struct spdk_nvmf_fabric_connect_rsp *rsp = (void *)&status->cpl;
 
 	if (nvme_qpair_is_admin_queue(qpair)) {
+    SPDK_ERRLOG("GESALOUSTRA: admin queue\n");
 		rsp->status_code_specific.success.cntlid = 1;
 	}
-
 	status->timed_out = g_nvme_wait_for_completion_timeout;
 
 	return 0;

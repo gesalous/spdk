@@ -2941,19 +2941,26 @@ register_controllers(void)
 	struct _trid_entry *trid_entry;
 
 	printf("Initializing NVMe Controllers\n");
+	SPDK_ERRLOG("GESALOUSTRA: Initializing NVMe Controllers\n");
 
 	if (g_vmd && spdk_vmd_init()) {
 		fprintf(stderr, "Failed to initialize VMD."
 			" Some NVMe devices can be unavailable.\n");
-	}
 
+		SPDK_ERRLOG("GESALOUSTRA: Failed to initialize VMD."
+			" Some NVMe devices can be unavailable.\n");
+	}
+  SPDK_ERRLOG("GESALOUSTRA: Iterating devices and staff...\n");
 	TAILQ_FOREACH(trid_entry, &g_trid_list, tailq) {
 		if (spdk_nvme_probe(&trid_entry->entry.trid, &trid_entry->entry, probe_cb, attach_cb, NULL) != 0) {
 			fprintf(stderr, "spdk_nvme_probe() failed for transport address '%s'\n",
 				trid_entry->entry.trid.traddr);
+			SPDK_ERRLOG("GESALOUSTRA: spdk_nvme_probe() failed for transport address '%s'\n",
+				trid_entry->entry.trid.traddr);
 			return -1;
 		}
 	}
+  SPDK_ERRLOG("GESALOUSTRA: Iterating devices and staff...DONE\n");
 
 	return 0;
 }
@@ -3203,6 +3210,7 @@ main(int argc, char **argv)
 #endif
 
 	if (register_controllers() != 0) {
+    SPDK_ERRLOG("GESALOUSTRA: failed to register controller S O R R Y\n");
 		rc = -1;
 		goto cleanup;
 	}

@@ -4,6 +4,7 @@
  *   Copyright (c) 2021-2023 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  */
 
+#include "spdk/log.h"
 #include "spdk/stdinc.h"
 
 #include "nvme_internal.h"
@@ -12,6 +13,8 @@
 #include "spdk/env.h"
 #include "spdk/string.h"
 #include "spdk/endian.h"
+/*<gesalous>*/
+#include "../rdma_provider/ptl_log.h"
 
 struct nvme_active_ns_ctx;
 
@@ -1020,6 +1023,7 @@ nvme_ctrlr_set_host_feature_done(void *arg, const struct spdk_nvme_cpl *cpl)
 	if (spdk_nvme_cpl_is_error(cpl)) {
 		NVME_CTRLR_ERRLOG(ctrlr, "Set host behavior support feature failed: SC %x SCT %x\n",
 				  cpl->status.sc, cpl->status.sct);
+    SPDK_PTL_CORE("FSM state: set controller to error state cpl says so");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_ERROR, NVME_TIMEOUT_INFINITE);
 		return;
 	}
@@ -1574,6 +1578,12 @@ static void
 nvme_ctrlr_set_state(struct spdk_nvme_ctrlr *ctrlr, enum nvme_ctrlr_state state,
 		     uint64_t timeout_in_ms)
 {
+  /*gesalous*/
+  if (state == NVME_CTRLR_STATE_ERROR){
+    SPDK_PTL_CORE("Controller set in error state!");
+    raise(SIGINT);
+  }
+  /*/gesalous*/
 	_nvme_ctrlr_set_state(ctrlr, state, timeout_in_ms, false);
 }
 
@@ -2069,6 +2079,7 @@ nvme_ctrlr_identify_done(void *arg, const struct spdk_nvme_cpl *cpl)
 
 	if (spdk_nvme_cpl_is_error(cpl)) {
 		NVME_CTRLR_ERRLOG(ctrlr, "nvme_identify_controller failed!\n");
+		SPDK_PTL_CORE("poulo nvme_identify_controller failed!");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_ERROR, NVME_TIMEOUT_INFINITE);
 		return;
 	}
@@ -3986,8 +3997,10 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 	/*
 	 * Check if the current initialization step is done or has timed out.
 	 */
+  SPDK_PTL_CORE("FSM state as number = %d and as string %s",ctrlr->state, nvme_ctrlr_state_string(ctrlr->state));
 	switch (ctrlr->state) {
 	case NVME_CTRLR_STATE_INIT_DELAY:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_INIT_DELAY");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_INIT, ready_timeout_in_ms);
 		if (ctrlr->quirks & NVME_QUIRK_DELAY_BEFORE_INIT) {
 			/*
@@ -4004,34 +4017,43 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		break;
 
 	case NVME_CTRLR_STATE_DISCONNECTED:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_DISCONNECTED");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_INIT, NVME_TIMEOUT_INFINITE);
 		break;
 
 	case NVME_CTRLR_STATE_CONNECT_ADMINQ: /* synonymous with NVME_CTRLR_STATE_INIT and NVME_CTRLR_STATE_DISCONNECTED */
-		rc = nvme_transport_ctrlr_connect_qpair(ctrlr, ctrlr->adminq);
-		if (rc == 0) {
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_CONNECT_ADMINQ");
+    rc = nvme_transport_ctrlr_connect_qpair(ctrlr, ctrlr->adminq);
+		if (rc == 0) {  
+      SPDK_PTL_CORE("Controller FSM state ok with the fucking qpair DONE, setting controller state to NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ");
 			nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ,
 					     NVME_TIMEOUT_INFINITE);
 		} else {
+      SPDK_PTL_CORE("FSM state failed to connect qpair setting controller in STATE of ERROR!");
 			nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_ERROR, NVME_TIMEOUT_INFINITE);
 		}
 		break;
 
 	case NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ:
+    SPDK_PTL_CORE("giorgis Controller FSM state: %s","NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ");
 		spdk_nvme_qpair_process_completions(ctrlr->adminq, 0);
 
 		switch (nvme_qpair_get_state(ctrlr->adminq)) {
 		case NVME_QPAIR_CONNECTING:
+      SPDK_PTL_CORE("giorgis internal (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) Controller FSM state: %s","NVME_QPAIR_CONNECTING");
 			if (ctrlr->is_failed) {
+      SPDK_PTL_CORE("giorgis internal (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) Controller FSM state: %s controller failed disconnect qpair","NVME_QPAIR_CONNECTING");
 				nvme_transport_ctrlr_disconnect_qpair(ctrlr, ctrlr->adminq);
 				break;
 			}
 
 			break;
 		case NVME_QPAIR_CONNECTED:
+      SPDK_PTL_CORE("giorgis (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) Controller FSM state: %s","NVME_QPAIR_CONNECTED");
 			nvme_qpair_set_state(ctrlr->adminq, NVME_QPAIR_ENABLED);
 		/* Fall through */
 		case NVME_QPAIR_ENABLED:
+      SPDK_PTL_CORE("giorgis (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) Controller FSM state: %s","NVME_QPAIR_ENABLED");
 			nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_READ_VS,
 					     NVME_TIMEOUT_INFINITE);
 			/* Abort any queued requests that were sent while the adminq was connecting
@@ -4042,11 +4064,14 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 			nvme_qpair_abort_queued_reqs(ctrlr->adminq);
 			break;
 		case NVME_QPAIR_DISCONNECTING:
+      SPDK_PTL_CORE("giorgis internal Controller (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) FSM state: %s","NVME_QPAIR_DISCONNECTING");
 			assert(ctrlr->adminq->async == true);
 			break;
-		case NVME_QPAIR_DISCONNECTED:
+		case NVME_QPAIR_DISCONNECTED: 
+      SPDK_PTL_CORE("giorgis internal (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) Controller FSM state: %s","NVME_QPAIR_DISCONNECTED");
 		/* fallthrough */
 		default:
+      SPDK_PTL_CORE("giorgis internal (NVME_CTRLR_STATE_WAIT_FOR_CONNECT_ADMINQ) Controller FSM state: %s","DEFAULT");
 			nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_ERROR, NVME_TIMEOUT_INFINITE);
 			break;
 		}
@@ -4054,22 +4079,26 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		break;
 
 	case NVME_CTRLR_STATE_READ_VS:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_READ_VS");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_READ_VS_WAIT_FOR_VS, NVME_TIMEOUT_INFINITE);
 		rc = nvme_ctrlr_get_vs_async(ctrlr, nvme_ctrlr_process_init_vs_done, ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_READ_CAP:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_READ_CAP");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_READ_CAP_WAIT_FOR_CAP, NVME_TIMEOUT_INFINITE);
 		rc = nvme_ctrlr_get_cap_async(ctrlr, nvme_ctrlr_process_init_cap_done, ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_CHECK_EN:
+    SPDK_PTL_CORE("Controller FSM state: %s\n","NVME_CTRLR_STATE_CHECK_EN");
 		/* Begin the hardware initialization by making sure the controller is disabled. */
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_CHECK_EN_WAIT_FOR_CC, ready_timeout_in_ms);
 		rc = nvme_ctrlr_get_cc_async(ctrlr, nvme_ctrlr_process_init_check_en, ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_DISABLE_WAIT_FOR_READY_1:
+    SPDK_PTL_CORE("Controller FSM state: %s\n","NVME_CTRLR_STATE_DISABLE_WAIT_FOR_READY_1");
 		/*
 		 * Controller is currently enabled. We need to disable it to cause a reset.
 		 *
@@ -4082,18 +4111,21 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		break;
 
 	case NVME_CTRLR_STATE_SET_EN_0:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_SET_EN_0");
 		NVME_CTRLR_DEBUGLOG(ctrlr, "Setting CC.EN = 0\n");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_SET_EN_0_WAIT_FOR_CC, ready_timeout_in_ms);
 		rc = nvme_ctrlr_get_cc_async(ctrlr, nvme_ctrlr_process_init_set_en_0_read_cc, ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_DISABLE_WAIT_FOR_READY_0:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_DISABLE_WAIT_FOR_READY_0");
 		nvme_ctrlr_set_state_quiet(ctrlr, NVME_CTRLR_STATE_DISABLE_WAIT_FOR_READY_0_WAIT_FOR_CSTS,
 					   NVME_TIMEOUT_KEEP_EXISTING);
 		rc = nvme_ctrlr_get_csts_async(ctrlr, nvme_ctrlr_process_init_wait_for_ready_0, ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_DISABLED:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_DISABLED");
 		if (ctrlr->is_disconnecting) {
 			NVME_CTRLR_DEBUGLOG(ctrlr, "Ctrlr was disabled.\n");
 		} else {
@@ -4108,6 +4140,7 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		break;
 
 	case NVME_CTRLR_STATE_ENABLE:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_ENABLE");
 		NVME_CTRLR_DEBUGLOG(ctrlr, "Setting CC.EN = 1\n");
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_ENABLE_WAIT_FOR_CC, ready_timeout_in_ms);
 		rc = nvme_ctrlr_enable(ctrlr);
@@ -4117,6 +4150,7 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		return rc;
 
 	case NVME_CTRLR_STATE_ENABLE_WAIT_FOR_READY_1:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_ENABLE_WAIT_FOR_READY_1");
 		nvme_ctrlr_set_state_quiet(ctrlr, NVME_CTRLR_STATE_ENABLE_WAIT_FOR_READY_1_WAIT_FOR_CSTS,
 					   NVME_TIMEOUT_KEEP_EXISTING);
 		rc = nvme_ctrlr_get_csts_async(ctrlr, nvme_ctrlr_process_init_enable_wait_for_ready_1,
@@ -4124,27 +4158,33 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		break;
 
 	case NVME_CTRLR_STATE_RESET_ADMIN_QUEUE:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_RESET_ADMIN_QUEUE");
 		nvme_transport_qpair_reset(ctrlr->adminq);
 		nvme_ctrlr_set_state(ctrlr, NVME_CTRLR_STATE_IDENTIFY, NVME_TIMEOUT_INFINITE);
 		break;
 
 	case NVME_CTRLR_STATE_IDENTIFY:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_IDENTIFY");
 		rc = nvme_ctrlr_identify(ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_CONFIGURE_AER:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_CONFIGURE_AER");
 		rc = nvme_ctrlr_configure_aer(ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_SET_KEEP_ALIVE_TIMEOUT:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_SET_KEEP_ALIVE_TIMEOUT");
 		rc = nvme_ctrlr_set_keep_alive_timeout(ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_IDENTIFY_IOCS_SPECIFIC:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_IDENTIFY_IOCS_SPECIFIC");
 		rc = nvme_ctrlr_identify_iocs_specific(ctrlr);
 		break;
 
 	case NVME_CTRLR_STATE_GET_ZNS_CMD_EFFECTS_LOG:
+    SPDK_PTL_CORE("Controller FSM state: %s\n","NVME_CTRLR_STATE_GET_ZNS_CMD_EFFECTS_LOG");
 		rc = nvme_ctrlr_get_zns_cmd_and_effects_log(ctrlr);
 		break;
 
@@ -4206,10 +4246,12 @@ nvme_ctrlr_process_init(struct spdk_nvme_ctrlr *ctrlr)
 		break;
 
 	case NVME_CTRLR_STATE_READY:
+    SPDK_PTL_CORE("FSM state controller is ready!!!");  
 		NVME_CTRLR_DEBUGLOG(ctrlr, "Ctrlr already in ready state\n");
 		return 0;
 
 	case NVME_CTRLR_STATE_ERROR:
+    SPDK_PTL_CORE("Controller FSM state: %s","NVME_CTRLR_STATE_ERROR!!!!!");
 		NVME_CTRLR_ERRLOG(ctrlr, "Ctrlr is in error state\n");
 		return -1;
 
@@ -5528,6 +5570,7 @@ spdk_nvme_ctrlr_alloc_qid(struct spdk_nvme_ctrlr *ctrlr)
 	qid = spdk_bit_array_find_first_set(ctrlr->free_io_qids, 1);
 	if (qid > ctrlr->opts.num_io_queues) {
 		NVME_CTRLR_ERRLOG(ctrlr, "No free I/O queue IDs\n");
+		SPDK_PTL_CORE("No free I/O queue IDs qid is: %d num io queues are: %d\n",qid,ctrlr->opts.num_io_queues);
 		nvme_ctrlr_unlock(ctrlr);
 		return -1;
 	}

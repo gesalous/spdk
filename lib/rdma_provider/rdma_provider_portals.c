@@ -220,10 +220,13 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
 		me.start = recv_op->io_vector;
+		// me.start = (void*)wr->sg_list[0].addr;
 		me.length = wr->num_sge;
+		// me.length = wr->sg_list[0].length;
 		me.ct_handle = PTL_CT_NONE;
 		me.uid = PTL_UID_ANY;
 		me.options = PTL_SRV_ME_OPTS | PTL_IOVEC;
+		// me.options = PTL_SRV_ME_OPTS;
 		recv_op->wr_id = wr->wr_id;
 		// Append the memory entry
 		ret = PtlMEAppend(
@@ -330,10 +333,13 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
 		me.start = recv_op->io_vector;
+		// me.start = recv_op->io_vector[0].iov_base;
 		me.length = wr->num_sge;
+		// me.length = recv_op->io_vector[0].iov_len;
 		me.ct_handle = PTL_CT_NONE;
 		me.uid = PTL_UID_ANY;
 		me.options = PTL_SRV_ME_OPTS | PTL_IOVEC;
+		// me.options = PTL_SRV_ME_OPTS;
 		recv_op->wr_id = wr->wr_id;
 
 		// Append the memory entry
@@ -710,14 +716,17 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				SPDK_PTL_FATAL("MEM desc not found!");
 			}
 
-			if (wr->sg_list[0].length == 64) {
-				ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)wr->sg_list[i].addr, "NVMe-cmd-send");
-			}
-			if (wr->sg_list[0].length == 16) {
-				ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)wr->sg_list[i].addr, "NVMe-cpl-send");
-			}
+
+			SPDK_PTL_DEBUG("OK: \n%d", wr->sg_list[0].length == 64 ?
+				       ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)wr->sg_list[i].addr, "NVMe-cmd-send-og") :
+				       ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)wr->sg_list[i].addr, "NVMe-cpl-send-og"));
+
 
 			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc->local_w_mem_desc.start;
+			//    void *addr = ptl_mem_desc->local_w_mem_desc.start + local_offset;
+			// SPDK_PTL_DEBUG("OK: \n%d",wr->sg_list[0].length == 64?
+			// 	ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)addr, "NVMe-cmd-send-der"):
+			// 	ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)addr, "NVMe-cpl-send-der"));
 
 
 			send_op = NULL;

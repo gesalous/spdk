@@ -14,8 +14,8 @@ SPDK_MAP_FILE = $(abspath $(CURDIR)/spdk_rdma_provider.map)
 
 LIBNAME = rdma_provider
 
-# Wrapper library settings
-WRAPPER_LIBNAME = rdmacmportals
+# librdamcm library settings
+WRAPPER_LIBNAME = rdmacm
 WRAPPER_SRCS = rdma_cm_portals.c
 WRAPPER_SRCS += ptl_cm_id.c
 WRAPPER_SRCS += ptl_context.c
@@ -28,6 +28,15 @@ WRAPPER_SRCS += ptl_srq.c
 WRAPPER_SRCS += ptl_uuid.c
 WRAPPER_SRCS += ptl_print_nvme_commands.c
 WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
+
+
+# librdamcm library settings
+VERBS_LIBNAME = ibverbs
+VERBS_SRCS = verbs_mockup.c
+VERBS_SRCS += ptl_cq.c
+VERBS_SRCS += ptl_pd.c
+VERBS_SO = lib$(VERBS_LIBNAME).so
+
 
 # Add configurable Portals prefix
 PORTALS_LIB_PREFIX ?= /usr/local
@@ -43,10 +52,10 @@ LOCAL_SYS_LIBS += -lmlx5
 else ifeq ($(CONFIG_RDMA_PROV),portals)
 C_SRCS = rdma_provider_portals.c
 # Build wrapper library for development
-EXTRA_TARGETS = $(WRAPPER_SO)
+EXTRA_TARGETS = $(VERBS_SO) $(WRAPPER_SO)
 # gesalous, not needed everything set in mk/spdk.common.mk
-# LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX) -lportals
-# LOCAL_SYS_LIBS = -L$(RDMA_CM_PORTALS_PREFIX) -lrdmacmportals
+LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX) -lportals
+LOCAL_SYS_LIBS = -L$(RDMA_CM_PORTALS_PREFIX) -lverbs -lrdmacm
 # gesalous, not needed everything set in mk/spdk.common.mk
 # LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)
 # LDFLAGS += -Wl,-rpath,-L$(RDMA_CM_PORTALS_PREFIX) 
@@ -76,6 +85,10 @@ LOCAL_SYS_LIBS += -lcxgb4
 endif
 endif
 
+# Build verbs_mockup shared library
+$(VERBS_SO): $(VERBS_SRCS)
+	$(CC) -shared -o $@ $^ -fPIC $(CFLAGS)
+
 $(WRAPPER_SO): $(WRAPPER_SRCS)
 	$(CC) -shared -o $@ $^ -fPIC -ldl $(CFLAGS) \
 		-I$(PORTALS_INCLUDE_PREFIX) \
@@ -83,12 +96,16 @@ $(WRAPPER_SO): $(WRAPPER_SRCS)
 		-Wl,-rpath,$(PORTALS_LIB_PREFIX)
 
 
+.PHONY: verbs_clean
+verbs_clean:
+	$(RM) $(VERBS_SO)
+
 .PHONY: wrapper_clean
 wrapper_clean:
 	$(RM) $(WRAPPER_SO)
 
 
-clean: wrapper_clean
+clean: verbs_clean wrapper_clean
 
 # Add wrapper library to all target if we're using portals
 ifeq ($(CONFIG_RDMA_PROV),portals)

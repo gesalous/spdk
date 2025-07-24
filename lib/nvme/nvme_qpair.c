@@ -5,9 +5,11 @@
  */
 
 #include "nvme_internal.h"
+#include "spdk/log.h"
 #include "spdk/nvme_ocssd.h"
 #include "spdk/string.h"
-
+/*gesalous*/
+#include "../rdma_provider/ptl_log.h"
 #define NVME_CMD_DPTR_STR_SIZE 256
 
 static int nvme_qpair_resubmit_request(struct spdk_nvme_qpair *qpair, struct nvme_request *req);
@@ -469,7 +471,18 @@ spdk_nvme_print_completion(uint16_t qid, struct spdk_nvme_cpl *cpl)
 	 * for fabrics so don't print an error when sqid is 0. */
 	if (cpl->sqid != qid && cpl->sqid != 0) {
 		SPDK_ERRLOG("sqid %u doesn't match qid\n", cpl->sqid);
+		SPDK_PTL_CORE("sqid %u doesn't match qid: %u", cpl->sqid, qid);
+    SPDK_PTL_CORE("Poulo? (HOT) %s (%02x/%02x) qid:%d cid:%d cdw0:%x sqhd:%04x p:%x m:%x dnr:%x",
+          spdk_nvme_cpl_get_status_string(&cpl->status),
+		       cpl->status.sct, cpl->status.sc, qid, cpl->cid, cpl->cdw0,
+		       cpl->sqhd, cpl->status.p, cpl->status.m, cpl->status.dnr);
+    // raise(SIGINT);
 	}
+
+	SPDK_PTL_CORE("(HOT) %s (%02x/%02x) qid:%d cid:%d cdw0:%x sqhd:%04x p:%x m:%x dnr:%x",
+		       spdk_nvme_cpl_get_status_string(&cpl->status),
+		       cpl->status.sct, cpl->status.sc, qid, cpl->cid, cpl->cdw0,
+		       cpl->sqhd, cpl->status.p, cpl->status.m, cpl->status.dnr);
 
 	SPDK_NOTICELOG("%s (%02x/%02x) qid:%d cid:%d cdw0:%x sqhd:%04x p:%x m:%x dnr:%x\n",
 		       spdk_nvme_cpl_get_status_string(&cpl->status),
@@ -807,6 +820,7 @@ spdk_nvme_qpair_process_completions(struct spdk_nvme_qpair *qpair, uint32_t max_
 
 	qpair->in_completion_context = 1;
 	ret = nvme_transport_qpair_process_completions(qpair, max_completions);
+  SPDK_PTL_CORE("agapi checked completions by asking the corresponding transport ret: %d",ret);
 	if (ret < 0) {
 		if (ret == -ENXIO && nvme_qpair_get_state(qpair) == NVME_QPAIR_DISCONNECTING) {
 			ret = 0;
@@ -814,12 +828,14 @@ spdk_nvme_qpair_process_completions(struct spdk_nvme_qpair *qpair, uint32_t max_
 			NVME_CTRLR_ERRLOG(qpair->ctrlr, "CQ transport error %d (%s) on qpair id %hu\n",
 					  ret, spdk_strerror(-ret), qpair->id);
 			if (nvme_qpair_is_admin_queue(qpair)) {
+        SPDK_PTL_CORE("PARTO apoliti poutsa");
 				nvme_ctrlr_fail(qpair->ctrlr, false);
 			}
 		}
 	}
 	qpair->in_completion_context = 0;
 	if (qpair->delete_after_completion_context) {
+    
 		/*
 		 * A request to delete this qpair was made in the context of this completion
 		 *  routine - so it is safe to delete it now.
@@ -833,6 +849,7 @@ spdk_nvme_qpair_process_completions(struct spdk_nvme_qpair *qpair, uint32_t max_
 	 * submit as many queued requests as we completed.
 	 */
 	if (ret > 0) {
+    SPDK_PTL_CORE("HERE qpair resubmit requests and staff...");
 		nvme_qpair_resubmit_requests(qpair, ret);
 	} else {
 		_nvme_qpair_complete_abort_queued_reqs(qpair);

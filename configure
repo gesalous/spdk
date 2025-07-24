@@ -882,13 +882,13 @@ fi
 
 if [ "${CONFIG[RDMA]}" = "y" ]; then
 
-  #gesalous
-  if [[ ! "${CONFIG[RDMA_PROV]}" == "verbs" ]] && [[ ! "${CONFIG[RDMA_PROV]}" == "mlx5_dv" ]] && [[ ! "${CONFIG[RDMA_PROV]}" == "portals" ]]; then
+	#gesalous
+	if [[ ! "${CONFIG[RDMA_PROV]}" == "verbs" ]] && [[ ! "${CONFIG[RDMA_PROV]}" == "mlx5_dv" ]] && [[ ! "${CONFIG[RDMA_PROV]}" == "portals" ]]; then
 		echo "Invalid RDMA provider specified, must be \"verbs\", \"mlx5_dv\", or \"portals\""
 		exit 1
 	fi
-  #original
-  #if [[ ! "${CONFIG[RDMA_PROV]}" == "verbs" ]] && [[ ! "${CONFIG[RDMA_PROV]}" == "mlx5_dv" ]]; then
+	#original
+	#if [[ ! "${CONFIG[RDMA_PROV]}" == "verbs" ]] && [[ ! "${CONFIG[RDMA_PROV]}" == "mlx5_dv" ]]; then
 	# echo "Invalid RDMA provider specified, must be \"verbs\" or \"mlx5_dv\""
 	# exit 1
 	#fi

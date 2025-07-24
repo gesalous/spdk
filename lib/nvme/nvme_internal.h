@@ -194,7 +194,10 @@ extern struct spdk_nvme_transport_opts g_spdk_nvme_transport_opts;
 
 /* Default timeout for fabrics connect commands. */
 #ifdef DEBUG
-#define NVME_FABRIC_CONNECT_COMMAND_TIMEOUT 0
+//gesalous!!!
+#define NVME_FABRIC_CONNECT_COMMAND_TIMEOUT 5000000
+//original
+//#define NVME_FABRIC_CONNECT_COMMAND_TIMEOUT 0
 #else
 /* 500 millisecond timeout. */
 #define NVME_FABRIC_CONNECT_COMMAND_TIMEOUT 500000

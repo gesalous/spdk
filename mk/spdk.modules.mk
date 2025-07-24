@@ -49,13 +49,32 @@ BLOCKDEV_MODULES_PRIVATE_LIBS += -lmlx5 -libverbs
 endif
 endif
 
+
+#original
+# ifeq ($(CONFIG_RDMA),y)
+# BLOCKDEV_MODULES_LIST += rdma_provider rdma_utils
+# BLOCKDEV_MODULES_PRIVATE_LIBS += -libverbs -lrdmacm
+# ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
+# BLOCKDEV_MODULES_PRIVATE_LIBS += -lmlx5
+# endif
+# endif
+#gesalous
 ifeq ($(CONFIG_RDMA),y)
-BLOCKDEV_MODULES_LIST += rdma_provider rdma_utils
-BLOCKDEV_MODULES_PRIVATE_LIBS += -libverbs -lrdmacm
-ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
-BLOCKDEV_MODULES_PRIVATE_LIBS += -lmlx5
+  BLOCKDEV_MODULES_LIST += rdma_provider rdma_utils
+
+  ifeq ($(CONFIG_RDMA_PROV),mlx5_dv)
+    BLOCKDEV_MODULES_PRIVATE_LIBS += -libverbs -lrdmacm -lmlx5
+  else ifeq ($(CONFIG_RDMA_PROV),portals)
+    BLOCKDEV_MODULES_PRIVATE_LIBS += -L$(PORTALS_LIB_PREFIX)/ -lportals
+    BLOCKDEV_MODULES_PRIVATE_LIBS += -L$(RDMA_CM_PORTALS_PREFIX)/ -libverbs -lrdmacm
+    CFLAGS += -I$(RDMA_CM_PORTALS_PREFIX)/include
+    LDFLAGS += -Wl,-rpath,$(RDMA_CM_PORTALS_PREFIX)/lib
+  else
+    BLOCKDEV_MODULES_PRIVATE_LIBS += -libverbs -lrdmacm
+  endif
 endif
-endif
+
+
 
 ifeq ($(OS),Linux)
 BLOCKDEV_MODULES_LIST += bdev_aio

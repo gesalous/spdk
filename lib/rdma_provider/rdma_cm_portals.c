@@ -880,108 +880,8 @@ void rdma_free_devices(struct ibv_context **list)
  * <Subset> of libverbs that Nida implements so nvmf target can operate
  * ********************************************************************
  **/
-int ibv_query_device(struct ibv_context *context,
-		     struct ibv_device_attr *device_attr)
-{
 
-	// Zero out the structure first
-	memset(device_attr, 0, sizeof(struct ibv_device_attr));
-	strcpy(device_attr->fw_ver, "2.42.5000");
-	device_attr->node_guid = 0x0002c90300fed670;
-	device_attr->sys_image_guid = 0x0002c90300fed673;
-	device_attr->max_mr_size =  18446744073709551615UL;
-	device_attr->page_size_cap = 0xfffffe00;
-	device_attr->vendor_id = 0x000002c9;
-	device_attr->vendor_part_id = 0x00001003;
-	device_attr->hw_ver = 0x00000001;
-	device_attr->max_qp = 131000;
-	device_attr->max_qp_wr = 16351;
-	device_attr->device_cap_flags = 0x05361c76;
-	device_attr->max_sge = 32;
-	device_attr->max_sge_rd = 30;
-	device_attr->max_cq = 65408;
-	device_attr->max_cqe = 4194303;
-	device_attr->max_mr = 524032;
-	device_attr->max_pd = 32764;
-	device_attr->max_qp_rd_atom = 16;
-	device_attr->max_ee_rd_atom = 0;
-	device_attr->max_res_rd_atom = 2096000;
-	device_attr->max_qp_init_rd_atom = 128;
-	device_attr->max_ee_init_rd_atom = 0;
-	device_attr->atomic_cap = 1; // Assuming 1 corresponds to the enum value
-	device_attr->max_ee = 0;
-	device_attr->max_rdd = 0;
-	device_attr->max_mw = 0;
-	device_attr->max_raw_ipv6_qp = 0;
-	device_attr->max_raw_ethy_qp = 0;
-	device_attr->max_mcast_grp = 8192;
-	device_attr->max_mcast_qp_attach = 248;
-	device_attr->max_total_mcast_qp_attach = 2031616;
-	device_attr->max_ah = 2147483647;
 
-	device_attr->max_srq = 256;            // Max Shared Receive Queues
-	device_attr->max_srq_wr = 4096;        // Max SRQ work requests
-	device_attr->max_srq_sge = 32;         // Max SGE for SRQ
-
-	// device_attr->vendor_id = 0x02c9;       //Fake Mellanox id
-	// device_attr->vendor_part_id = 0x1017;  // Fake Mellanox part id
-	// device_attr->max_qp = 256;             // Number of QPs you'll support
-	// device_attr->max_cq = 256;             // Number of CQs
-	// device_attr->max_mr = 256;             // Number of Memory Regions
-	// device_attr->max_pd = 256;             // Number of Protection Domains
-	// device_attr->max_qp_wr = 4096;         // Max Work Requests per QP
-	// device_attr->max_cqe = 4096;           // Max CQ entries
-	// device_attr->max_mr_size = UINT64_MAX; // Max size of Memory Region
-	// device_attr->max_sge = 32;             // Max Scatter/Gather Elements
-	// device_attr->max_sge_rd = 32;          // Max SGE for RDMA read
-	// device_attr->max_qp_rd_atom = 0;      // Max outstanding RDMA reads
-	// device_attr->max_qp_init_rd_atom = 16; // Initial RDMA read resources
-	// device_attr->max_srq = 256;            // Max Shared Receive Queues
-	// device_attr->max_srq_wr = 4096;        // Max SRQ work requests
-	// device_attr->max_srq_sge = 32;         // Max SGE for SRQ
-
-	// // Set capabilities flags
-	// device_attr->device_cap_flags =
-	// 	IBV_DEVICE_RESIZE_MAX_WR |  // Support QP/CQ resize
-	// 	IBV_DEVICE_BAD_PKEY_CNTR |  // Support bad pkey counter
-	// 	IBV_DEVICE_BAD_QKEY_CNTR |  // Support bad qkey counter
-	// 	IBV_DEVICE_RAW_MULTI |      // Support raw packet QP
-	// 	IBV_DEVICE_AUTO_PATH_MIG |  // Support auto path migration
-	// 	IBV_DEVICE_CHANGE_PHY_PORT; // Support changing physical port
-	SPDK_PTL_DEBUG("IBVPTL: Trapped ibv_query_device *FILLED* it with reasonable values...DONE");
-	return 0;
-}
-
-struct ibv_pd *ibv_alloc_pd(struct ibv_context *context)
-{
-	struct ptl_pd *ptl_pd;
-	struct ptl_context *ptl_context = ptl_cnxt_get_from_ibcnxt(context);
-	SPDK_PTL_DEBUG("IBVPTL: OK trapped ibv_alloc_pd allocating ptl_pd");
-	if (ptl_context->ptl_pd) {
-		SPDK_PTL_DEBUG("PTL_PD Already set, go on");
-		return ptl_pd_get_ibv_pd(ptl_context->ptl_pd);
-	}
-	ptl_pd = ptl_pd_create(ptl_context);
-	ptl_context->ptl_pd = ptl_pd;
-	return ptl_pd_get_ibv_pd(ptl_pd);
-}
-
-struct ibv_context *ibv_open_device(struct ibv_device *device)
-{
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return NULL;
-}
-
-struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
-			     void *cq_context, struct ibv_comp_channel *channel,
-			     int comp_vector)
-{
-
-	SPDK_PTL_DEBUG("IBVPTL: Ok trapped ibv_create_cq time to create the event queue in portals");
-	struct ptl_cq *ptl_cq = ptl_cq_create(cq_context);
-	SPDK_PTL_DEBUG("PtlCQ: Ok set up event queue for PORTALS :-) CQ id = %d", ptl_cq->cq_id);
-	return ptl_cq_get_ibv_cq(ptl_cq);
-}
 
 // Caution! Due to inlining of ibv_poll_cq SPDK_PTL overrides it also in
 // ptl_context
@@ -991,27 +891,6 @@ struct ibv_cq *ibv_create_cq(struct ibv_context *context, int cqe,
 //     return -1;
 // }
 
-struct ibv_srq *ibv_create_srq(struct ibv_pd *pd,
-			       struct ibv_srq_init_attr *srq_init_attr)
-{
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return NULL;
-}
-
-int ibv_modify_srq(struct ibv_srq *srq,
-		   struct ibv_srq_attr *srq_attr,
-		   int srq_attr_mask)
-{
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return 0;
-}
-
-
-int ibv_destroy_srq(struct ibv_srq *srq)
-{
-	SPDK_PTL_FATAL("UNIMPLEMENTED");
-	return 0;
-}
 /**
  * ********************************************************************
  * </Subset> of libverbs that Nida implements so nvmf target can operate
@@ -1628,13 +1507,6 @@ int rdma_disconnect(struct rdma_cm_id *id)
 }
 
 
-int ibv_destroy_cq(struct ibv_cq *cq)
-{
-	struct ptl_cq *ptl_cq = ptl_cq_get_from_ibv_cq(cq);
-	SPDK_PTL_DEBUG("PtlCQ: destroy CAUTION, ignore this XXX TODO XXX");
-	ptl_cq->is_in_use = false;
-	return 0;
-}
 
 
 
@@ -1665,8 +1537,41 @@ void rdma_destroy_event_channel(struct rdma_event_channel *channel)
 	free(ptl_channel);
 }
 
-int ibv_dealloc_pd(struct ibv_pd *pd)
+__be16 ucma_get_port(struct sockaddr *addr)
 {
-	SPDK_PTL_DEBUG("CAUTION Do nothing pd is singleton staff in Portals only for compatibility XXX TODO XXX");
-	return 0;
+	switch (addr->sa_family) {
+	case AF_INET:
+		return ((struct sockaddr_in *) addr)->sin_port;
+	case AF_INET6:
+		return ((struct sockaddr_in6 *) addr)->sin6_port;
+	default:
+		return 0;
+	}
+}
+
+__be16 rdma_get_src_port(struct rdma_cm_id *id)
+{
+	struct ptl_cm_id *ptl_id = ptl_cm_id_get(id);
+	__be16 port = ucma_get_port(&id->route.addr.src_addr);
+	SPDK_PTL_DEBUG("Sorry unimplemented XXX TODO XXX for ptl_id: %d port: %" PRIu16 "\n",
+		       ptl_id->ptl_qp_num, port);
+	return ucma_get_port(&id->route.addr.src_addr);
+}
+
+__be16 rdma_get_dst_port(struct rdma_cm_id *id)
+{
+	SPDK_PTL_FATAL("Sorry unimplemented");
+}
+
+
+void rdma_destroy_qp(struct rdma_cm_id *id)
+{
+	SPDK_PTL_FATAL("Sorry unimplemented");
+
+}
+
+int rdma_reject(struct rdma_cm_id *id, const void *private_data,
+		uint8_t private_data_len)
+{
+	SPDK_PTL_FATAL("Sorry unimplemented");
 }
