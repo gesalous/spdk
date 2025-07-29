@@ -15,7 +15,7 @@ SPDK_MAP_FILE = $(abspath $(CURDIR)/spdk_rdma_provider.map)
 LIBNAME = rdma_provider
 
 # librdamcm library settings
-WRAPPER_LIBNAME = rdmacm
+WRAPPER_LIBNAME = rdmacm_portals
 WRAPPER_SRCS = rdma_cm_portals.c
 WRAPPER_SRCS += ptl_cm_id.c
 WRAPPER_SRCS += ptl_context.c
@@ -31,7 +31,7 @@ WRAPPER_SO = lib$(WRAPPER_LIBNAME).so
 
 
 # librdamcm library settings
-VERBS_LIBNAME = ibverbs
+VERBS_LIBNAME = ibverbs_portals
 VERBS_SRCS = verbs_mockup.c
 VERBS_SRCS += ptl_cq.c
 VERBS_SRCS += ptl_pd.c
@@ -55,7 +55,7 @@ C_SRCS = rdma_provider_portals.c
 EXTRA_TARGETS = $(VERBS_SO) $(WRAPPER_SO)
 # gesalous, not needed everything set in mk/spdk.common.mk
 LOCAL_SYS_LIBS = -L$(PORTALS_LIB_PREFIX) -lportals
-LOCAL_SYS_LIBS = -L$(RDMA_CM_PORTALS_PREFIX) -lverbs -lrdmacm
+LOCAL_SYS_LIBS = -L$(RDMA_CM_PORTALS_PREFIX) -libverbs_portals -lrdmacm_portals
 # gesalous, not needed everything set in mk/spdk.common.mk
 # LDFLAGS += -Wl,-rpath,$(PORTALS_LIB_PREFIX)
 # LDFLAGS += -Wl,-rpath,-L$(RDMA_CM_PORTALS_PREFIX) 
