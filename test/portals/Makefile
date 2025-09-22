@@ -1,23 +1,19 @@
+#  SPDX-License-Identifier: BSD-3-Clause
+#  Copyright (c) 2021 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+#
+
 SPDK_ROOT_DIR := $(abspath $(CURDIR)/../..)
 include $(SPDK_ROOT_DIR)/mk/spdk.common.mk
-include $(SPDK_ROOT_DIR)/mk/spdk.modules.mk
 
-APP = spdk_nvmeof_test
-
-C_SRCS := spdk_nvmeof_test.c
-
-SPDK_LIB_LIST += $(SOCK_MODULES_LIST) nvme vmd keyring_file
-
-ifeq ($(OS),Linux)
-SYS_LIBS += -laio
-CFLAGS += -DHAVE_LIBAIO
+ifeq ($(CONFIG_RDMA),y)
+DIRS-y = spdk_nvmeof_test
+DIRS-y += simple_read 
 endif
 
-include $(SPDK_ROOT_DIR)/mk/spdk.app.mk
+.PHONY: all clean $(DIRS-y)
 
-install: $(APP)
-	$(INSTALL_APP)
+all: $(DIRS-y)
+clean: $(DIRS-y)
 
-uninstall:
-	$(UNINSTALL_APP)
+include $(SPDK_ROOT_DIR)/mk/spdk.subdirs.mk
 

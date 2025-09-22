@@ -680,8 +680,12 @@ spdk_rdma_utils_put_pd(struct ibv_pd *pd)
 
 	TAILQ_FOREACH_SAFE(dev, &g_dev_list, tailq, tmp) {
 		if (dev->pd == pd) {
-			assert(dev->ref > 0);
-			dev->ref--;
+      SPDK_PTL_DEBUG("dev ref counter is: %d ignore it we have a single static pd",dev->ref);
+			//vanila
+   //    assert(dev->ref > 0);
+			// dev->ref--;
+      // gesalous
+      dev->ref = dev->ref > 0 ? dev->ref--:0;
 
 			rdma_remove_dev(dev);
 		}

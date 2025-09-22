@@ -140,8 +140,6 @@ void ibv_unimport_pd(struct ibv_pd *pd)
 }
 
 
-
-
 struct ibv_mr *ibv_reg_dmabuf_mr(struct ibv_pd *pd, uint64_t offset, size_t length, uint64_t iova,
 				 int fd, int access)
 {

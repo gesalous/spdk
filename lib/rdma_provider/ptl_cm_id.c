@@ -14,11 +14,15 @@ static int ptl_local_qp_num = 1;
 struct ptl_cm_id *ptl_cm_id_create(struct rdma_cm_ptl_event_channel *ptl_channel, void *context)
 {
 	struct ptl_context * ptl_context;
+  if(NULL == ptl_channel){
+    SPDK_PTL_FATAL("NULL channel on cm_id_create?");
+  }
 	struct ptl_cm_id * ptl_id = calloc(1UL, sizeof(*ptl_id));
 	if (NULL == ptl_id) {
 		SPDK_PTL_FATAL("Failed to allocate memory");
 	}
 	ptl_id->object_type = PTL_CM_ID;
+
 	/*o mpampas sas*/
 	ptl_id->ptl_channel = ptl_channel;
 	ptl_id->fake_cm_id.context = context;
@@ -74,17 +78,20 @@ struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id, struct pt
 void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
 			 struct rdma_cm_event *event)
 {
+  if(NULL == ptl_id->ptl_channel){
+    SPDK_PTL_FATAL("NULL channel in ptl_cm_id? why?");
+  }
 	rdma_cm_ptl_event_channel_lock_event_deque(ptl_id->ptl_channel);
 	if (false ==
 	    deque_push_front(ptl_id->ptl_channel->events_deque, event)) {
 		SPDK_PTL_FATAL("Failed to queue fake event");
 	}
-	// SPDK_PTL_DEBUG(" (nikos) ********* Added event of type: %d for qp_num: %d and channel %p", event->event, ptl_id->ptl_qp_num, ptl_id->ptl_channel);
-	uint64_t result;
-	if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
-		perror("read");
-		SPDK_PTL_WARN("Failed to write event");
-	}
+  //gesalous XXX TODO XXX we do not need this for now.
+	// uint64_t result = 0;
+	// if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
+	// 	perror("write failed reason:");
+	// 	SPDK_PTL_WARN("Failed to write event");
+	// }
 	rdma_cm_ptl_event_channel_unlock_event_deque(ptl_id->ptl_channel);
 }
 

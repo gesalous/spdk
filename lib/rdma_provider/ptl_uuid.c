@@ -73,9 +73,8 @@ uint64_t ptl_uuid_set_initiator_qp_num(uint64_t uuid, int qp_num)
 
 int ptl_uuid_get_initiator_qp_num(uint64_t uuid)
 {
-	// int qp_num = (uuid >> 32) & 0x00FFFFFF;
 	int qp_num = (uuid & ~PTL_UUID_INITIATOR_QP_NUM_MASK) >> 16UL;
-	SPDK_PTL_DEBUG("CP server: Getting initiator's qp num uuid = %lu qp num = %d", uuid, qp_num);
+	// SPDK_PTL_DEBUG("CP server: Getting initiator's qp num uuid = %lu qp num = %d", uuid, qp_num);
 	return qp_num;
 }
 

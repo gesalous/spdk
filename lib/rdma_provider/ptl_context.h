@@ -12,24 +12,32 @@ struct ibv_context;
 struct ibv_pd;
 
 struct ptl_context_recv_op {
-	ptl_obj_type_e obj_type;
-	uint64_t wr_id;
 	uint64_t bytes_received;
-	int initiator_qp_num;
+  int initiator_qp_num;
 	int target_qp_num;
-  bool reveive_done;
+	bool reveive_done;
 	/*In which cqid I wait for the receive event*/
 	int cq_id;
-	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
+  ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 
 struct ptl_context_send_op {
+  int qp_num;
+	/*only for DEBUG purposes*/
+	uint64_t crc_checksum;
+	void *addr;
+	int length;
+};
+
+struct ptl_context_op_meta {
 	ptl_obj_type_e obj_type;
 	uint64_t wr_id;
 	int cq_id;
-	int qp_num;
+	union {
+		struct ptl_context_send_op send_op;
+		struct ptl_context_recv_op recv_op;
+	};
 };
-
 
 
 struct ptl_context {

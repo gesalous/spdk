@@ -46,6 +46,26 @@
 		} \
 	} while (0)
 
+
+// static uint64_t rdma_ptl_calculate_crc64(const void *data, size_t length)
+// {
+// 	uint64_t crc = 0xFFFFFFFFFFFFFFFFULL;
+// 	const unsigned char *p = data;
+
+// 	for (size_t i = 0; i < length; i++) {
+// 		crc ^= (uint64_t)p[i];
+// 		for (int j = 0; j < 8; j++) {
+// 			if (crc & 1) {
+// 				crc = (crc >> 1) ^ 0xC96C5795D7870F42ULL;
+// 			} else {
+// 				crc >>= 1;
+// 			}
+// 		}
+// 	}
+// 	return crc ^ 0xFFFFFFFFFFFFFFFFULL;
+// }
+
+
 struct spdk_portals_provider_srq {
 	uint64_t magic_number;
 	struct spdk_rdma_provider_srq fake_srq;
@@ -182,7 +202,7 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 	ptl_handle_ni_t nic;
 	ptl_me_t me;
 	ptl_handle_me_t me_handle;
-	struct ptl_context_recv_op *recv_op;
+	struct ptl_context_op_meta *recv_meta;
 	int ret;
 
 	if (spdk_unlikely(rdma_srq->recv_wrs.first == NULL)) {
@@ -201,14 +221,14 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 			SPDK_PTL_FATAL("IOVECTOR too small size is: %d needs %d", PTL_IOVEC_SIZE, wr->num_sge);
 		}
 		// SPDK_PTL_DEBUG("Num of sges are %d", wr->num_sge);
-		recv_op = calloc(1UL, sizeof(*recv_op));
-		recv_op->obj_type = PTL_RECV_OP;
-		recv_op->cq_id = PTL_UUID_TARGET_COMPLETION_QUEUE_ID;
+		recv_meta = calloc(1UL, sizeof(*recv_meta));
+		recv_meta->obj_type = PTL_RECV_OP;
+		recv_meta->cq_id = PTL_UUID_TARGET_COMPLETION_QUEUE_ID;
 		for (int i = 0; i < wr->num_sge; i++) {
-			recv_op->io_vector[i].iov_base = (ptl_addr_t)wr->sg_list[i].addr;
-			recv_op->io_vector[i].iov_len = wr->sg_list[i].length;
-			SPDK_PTL_DEBUG("iovector[%d] = : Address = %p, Length = %lu\n",
-				       i, recv_op->io_vector[i].iov_base, recv_op->io_vector[i].iov_len);
+			recv_meta->recv_op.io_vector[i].iov_base = (ptl_addr_t)wr->sg_list[i].addr;
+			recv_meta->recv_op.io_vector[i].iov_len = wr->sg_list[i].length;
+			// SPDK_PTL_DEBUG("iovector[%d] = : Address = %p, Length = %lu\n",
+			// 	       i, recv_op->io_vector[i].iov_base, recv_op->io_vector[i].iov_len);
 		}
 
 		/*Initialize the matching entries*/
@@ -219,7 +239,7 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		me.match_id.phys.nid = PTL_NID_ANY;
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
-		me.start = recv_op->io_vector;
+		me.start = recv_meta->recv_op.io_vector;
 		// me.start = (void*)wr->sg_list[0].addr;
 		me.length = wr->num_sge;
 		// me.length = wr->sg_list[0].length;
@@ -227,14 +247,14 @@ spdk_rdma_provider_srq_flush_recv_wrs(struct spdk_rdma_provider_srq *rdma_srq,
 		me.uid = PTL_UID_ANY;
 		me.options = PTL_SRV_ME_OPTS | PTL_IOVEC;
 		// me.options = PTL_SRV_ME_OPTS;
-		recv_op->wr_id = wr->wr_id;
+		recv_meta->wr_id = wr->wr_id;
 		// Append the memory entry
 		ret = PtlMEAppend(
 			      nic,                    // Network interface handle
 			      ptl_cnxt_get_portal_index(portals_srq->ptl_context), //Portals table index
 			      &me,                    // List entry
 			      PTL_PRIORITY_LIST,      // List type (PRIORITY or OVERFLOW)
-			      recv_op,               // User pointer, stores recv op meta (wr_id)
+			      recv_meta,               // User pointer, stores recv op meta (wr_id)
 			      &me_handle              // Returned handle
 		      );
 		if (PTL_OK != ret) {
@@ -289,7 +309,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	ptl_pt_index_t pt_index;
 	ptl_me_t me;
 	ptl_handle_me_t me_handle;
-	struct ptl_context_recv_op *recv_op;
+	struct ptl_context_op_meta *recv_meta;
 	int ret;
 
 
@@ -314,12 +334,12 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			SPDK_PTL_FATAL("io_vector too small size: %d needs %d", PTL_IOVEC_SIZE, wr->num_sge);
 		}
 
-		recv_op = calloc(1UL, sizeof(*recv_op));
-		recv_op->obj_type = PTL_RECV_OP;
-		recv_op->cq_id = portals_qp->ptl_id->ptl_qp->recv_cq->cq_id;
+		recv_meta = calloc(1UL, sizeof(*recv_meta));
+		recv_meta->obj_type = PTL_RECV_OP;
+		recv_meta->cq_id = portals_qp->ptl_id->ptl_qp->recv_cq->cq_id;
 		for (int i = 0; i < wr->num_sge; i++) {
-			recv_op->io_vector[i].iov_base = (ptl_addr_t) wr->sg_list[i].addr;
-			recv_op->io_vector[i].iov_len = wr->sg_list[i].length;
+			recv_meta->recv_op.io_vector[i].iov_base = (ptl_addr_t) wr->sg_list[i].addr;
+			recv_meta->recv_op.io_vector[i].iov_len = wr->sg_list[i].length;
 			SPDK_PTL_DEBUG("SGE no: %d out of: %d: Address = %p, Length = %lu\n",
 				       i, wr->num_sge, recv_op->io_vector[i].iov_base, recv_op->io_vector[i].iov_len);
 		}
@@ -332,7 +352,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		me.match_id.phys.nid = PTL_NID_ANY;
 		me.match_id.phys.pid = PTL_PID_ANY;
 		me.min_free = 0;
-		me.start = recv_op->io_vector;
+		me.start = recv_meta->recv_op.io_vector;
 		// me.start = recv_op->io_vector[0].iov_base;
 		me.length = wr->num_sge;
 		// me.length = recv_op->io_vector[0].iov_len;
@@ -340,7 +360,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 		me.uid = PTL_UID_ANY;
 		me.options = PTL_SRV_ME_OPTS | PTL_IOVEC;
 		// me.options = PTL_SRV_ME_OPTS;
-		recv_op->wr_id = wr->wr_id;
+		recv_meta->wr_id = wr->wr_id;
 
 		// Append the memory entry
 		ret = PtlMEAppend(
@@ -348,7 +368,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			      pt_index,               // Portal table index
 			      &me,                    // List entry
 			      PTL_PRIORITY_LIST,      // List type (PRIORITY or OVERFLOW)
-			      recv_op,               // User pointer (can be used to store wr_id)
+			      recv_meta,               // User pointer (can be used to store wr_id)
 			      &me_handle              // Returned handle
 		      );
 		if (PTL_OK != ret) {
@@ -581,7 +601,7 @@ static void spdk_rdma_provider_ptl_rdma_read(struct ptl_pd *ptl_pd, struct ptl_q
 	ptl_process_t destination = {.phys.nid = ptl_qp->remote_nid, .phys.pid = ptl_qp->remote_pid};
 	size_t local_offset;
 	int rc;
-	struct ptl_context_send_op *rdma_read_op;
+	struct ptl_context_op_meta *rdma_read_meta;
 
 	SPDK_PTL_CHECK_SGE_LENGTH(wr);
 
@@ -594,12 +614,12 @@ static void spdk_rdma_provider_ptl_rdma_read(struct ptl_pd *ptl_pd, struct ptl_q
 	}
 
 
-	rdma_read_op = NULL;
+	rdma_read_meta = NULL;
 	if (wr->send_flags & IBV_SEND_SIGNALED) {
-		rdma_read_op = calloc(1UL, sizeof(*rdma_read_op));
-		rdma_read_op->obj_type = PTL_SEND_OP;
-		rdma_read_op->wr_id = wr->wr_id;
-		rdma_read_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
+		rdma_read_meta = calloc(1UL, sizeof(*rdma_read_meta));
+		rdma_read_meta->obj_type = PTL_SEND_OP;
+		rdma_read_meta->wr_id = wr->wr_id;
+		rdma_read_meta->send_op.qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
 	}
 
 	local_offset = wr->sg_list[0].addr - (uint64_t)ptl_pd_mem_desc->local_w_mem_desc.start;
@@ -608,7 +628,7 @@ static void spdk_rdma_provider_ptl_rdma_read(struct ptl_pd *ptl_pd, struct ptl_q
 		       rdma_read_op ? "YES" : "NO", ptl_qp->ptl_cm_id->ptl_qp_num);
 	/*XXX TODO XXX, set match bits correct here!XXX TODO XXX*/
 	rc = PtlGet(ptl_pd_mem_desc->local_w_mem_handle, local_offset, wr->sg_list[0].length, destination,
-		    PTL_PT_INDEX, match_bits, wr->wr.rdma.remote_addr, rdma_read_op);
+		    PTL_PT_INDEX, match_bits, wr->wr.rdma.remote_addr, rdma_read_meta);
 	if (PTL_OK != rc) {
 		SPDK_PTL_FATAL("Remote RDMA read failed Sorry!");
 	}
@@ -621,7 +641,7 @@ static void spdk_rdma_provider_ptl_rdma_write(struct ptl_pd *ptl_pd, struct ptl_
 	struct ptl_pd_mem_desc *ptl_pd_mem_desc;
 	size_t local_offset;
 	ptl_process_t destination = {.phys.nid = ptl_qp->remote_nid, .phys.pid = ptl_qp->remote_pid};
-	struct ptl_context_send_op *send_op;
+	struct ptl_context_op_meta *rdma_write_meta;
 	int rc;
 	uint64_t remote_addr =  wr->wr.rdma.remote_addr;
 
@@ -633,31 +653,31 @@ static void spdk_rdma_provider_ptl_rdma_write(struct ptl_pd *ptl_pd, struct ptl_
 			SPDK_PTL_FATAL("Failed to find descriptor");
 		}
 		local_offset = wr->sg_list[i].addr - (uint64_t)ptl_pd_mem_desc->local_w_mem_desc.start;
-		SPDK_PTL_DEBUG("Performing an RDMA WRITE (sg[%d]) from node "
+		SPDK_PTL_DEBUG("Performing an RDMA WRITE (sg[%d]) to node "
 			       "nid: %d pid: %d portal index: %d local offset: "
-			       "%lu length in B: %u is it signaled?: %s",
+			       "%lu length in B: %u remote_addr: %lu is it signaled?: %s",
 			       i, destination.phys.nid, destination.phys.pid,
 			       PTL_PT_INDEX, local_offset,
-			       wr->sg_list[i].length, send_op ? "YES" : "NO");
+			       wr->sg_list[i].length, remote_addr, send_op ? "YES" : "NO");
 
-		send_op = NULL;
+		rdma_write_meta = NULL;
 		if (wr->send_flags & IBV_SEND_SIGNALED && i == (wr->num_sge - 1)) {
-			send_op = calloc(1UL, sizeof(*send_op));
-			send_op->obj_type = PTL_SEND_OP;
-			send_op->wr_id = wr->wr_id;
-			send_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
-			send_op->cq_id = ptl_qp->send_cq->cq_id;
+			rdma_write_meta = calloc(1UL, sizeof(*rdma_write_meta));
+			rdma_write_meta->obj_type = PTL_SEND_OP;
+			rdma_write_meta->wr_id = wr->wr_id;
+			rdma_write_meta->send_op.qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
+			rdma_write_meta->cq_id = ptl_qp->send_cq->cq_id;
 		}
 
 		rc = PtlPut(ptl_pd_mem_desc->local_w_mem_handle,
-			    local_offset,           // local offset
-			    wr->sg_list[i].length,         // length
+			    local_offset,// local offset
+			    wr->sg_list[i].length,
 			    PTL_ACK_REQ,
-			    destination,       // target process
-			    PTL_PT_INDEX,        // portal table index
+			    destination,// target process
+			    PTL_PT_INDEX,// portal table index
 			    match_bits,// match bits
 			    remote_addr,
-			    send_op,
+			    rdma_write_meta,
 			    0);// priority
 
 		if (PTL_OK != rc) {
@@ -681,7 +701,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 	struct ptl_pd *ptl_pd = ptl_qp_get_pd(ptl_qp);
 	struct ptl_pd_mem_desc * ptl_mem_desc;
 	ptl_process_t target = {.phys.nid = ptl_qp->remote_nid, .phys.pid = ptl_qp->remote_pid};
-	struct ptl_context_send_op *send_op;
+	struct ptl_context_op_meta *send_meta;
 	uint64_t local_offset;
 
 
@@ -723,19 +743,20 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 
 			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc->local_w_mem_desc.start;
-			//    void *addr = ptl_mem_desc->local_w_mem_desc.start + local_offset;
-			// SPDK_PTL_DEBUG("OK: \n%d",wr->sg_list[0].length == 64?
-			// 	ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)addr, "NVMe-cmd-send-der"):
-			// 	ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)addr, "NVMe-cpl-send-der"));
 
 
-			send_op = NULL;
+			send_meta = NULL;
 			if (wr->send_flags & IBV_SEND_SIGNALED) {
-				send_op = calloc(1UL, sizeof(*send_op));
-				send_op->obj_type = PTL_SEND_OP;
-				send_op->wr_id = wr->wr_id;
-				send_op->qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
-				send_op->cq_id = ptl_qp->send_cq->cq_id;
+				send_meta = calloc(1UL, sizeof(*send_meta));
+				send_meta->obj_type = PTL_SEND_OP;
+				send_meta->wr_id = wr->wr_id;
+				send_meta->send_op.qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
+				send_meta->cq_id = ptl_qp->send_cq->cq_id;
+				/*XXX TODO XXX, DEBUG purposes*/
+				// send_meta->send_op.crc_checksum = rdma_ptl_calculate_crc64((void*)wr->sg_list[i].addr,
+				// 				  wr->sg_list[i].length);
+				// send_meta->send_op.addr = (void *)wr->sg_list[i].addr;
+				// send_meta->send_op.length = wr->sg_list[i].length;
 			}
 
 			SPDK_PTL_DEBUG(
@@ -759,7 +780,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				    ptl_qp->remote_pt_index,//portal table index
 				    ptl_uuid_set_match_list(match_bits, ptl_qp->ptl_cm_id->recv_match_bits),//match bits
 				    0,// remote offset, don't care let target decide
-				    send_op,
+				    send_meta,
 				    0);
 
 			if (rc != PTL_OK) {

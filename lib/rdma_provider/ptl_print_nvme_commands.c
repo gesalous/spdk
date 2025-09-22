@@ -6,11 +6,11 @@
 #include <stdio.h>
 #include <string.h>
 // Function to print NVMe command in human-readable format
-int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix)
+int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix, int cq_id)
 {
 	const char *command;
 	if (!cmd) {
-		SPDK_PTL_DEBUG("NVMe-cmd: NULL command");
+		SPDK_PTL_INFO("NVMe-cmd: NULL command");
 		return 1;
 	}
 	// Interpret common opcodes
@@ -70,57 +70,82 @@ int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix)
 		break;
 	}
 
-	SPDK_PTL_DEBUG("%s: command opcode: 0x%02x  human-readable: %s", prefix, cmd->opc, command);
-	SPDK_PTL_DEBUG("%s: NSID: %u", prefix, cmd->nsid);
-	SPDK_PTL_DEBUG("%s: CID: %u", prefix, cmd->cid);
-	SPDK_PTL_DEBUG("%s:  FUSE: %u", prefix, cmd->fuse);
-	SPDK_PTL_DEBUG("%s:  PSDT: %u\n", prefix, cmd->psdt);
-	SPDK_PTL_DEBUG("%s:  CDW10-15: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x", prefix,
+	SPDK_PTL_INFO("%s: command opcode: 0x%02x  human-readable: %s from cq_id: %d", prefix, cmd->opc, command, cq_id);
+	SPDK_PTL_INFO("%s: NSID: %u", prefix, cmd->nsid);
+	SPDK_PTL_INFO("%s: CID: %u", prefix, cmd->cid);
+	SPDK_PTL_INFO("%s:  FUSE: %u", prefix, cmd->fuse);
+	SPDK_PTL_INFO("%s:  PSDT: %u\n", prefix, cmd->psdt);
+	SPDK_PTL_INFO("%s:  CDW10-15: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x", prefix,
 		       cmd->cdw10, cmd->cdw11, cmd->cdw12, cmd->cdw13, cmd->cdw14, cmd->cdw15);
-  return 1;
+	// If READ or WRITE, show data pointer (PRP / SGL)
+	if (cmd->opc != SPDK_NVME_OPC_READ && cmd->opc != SPDK_NVME_OPC_WRITE) {
+		return 1;
+	}
+  if(0 == cmd->psdt){
+    SPDK_PTL_FATAL("%s *WEIRD* PRPs used instead of SGLs",prefix);
+  }
+
+	// Print SGL descriptor - check type/subtype first to determine which union member to use
+	uint8_t sgl_type = cmd->dptr.sgl1.generic.type;
+	uint8_t sgl_subtype = cmd->dptr.sgl1.generic.subtype;
+  if(sgl_type != SPDK_NVME_SGL_TYPE_KEYED_DATA_BLOCK){
+    SPDK_PTL_FATAL("%s *WEIRD* sgl is not of keyed type  sgl_type: %u",prefix, sgl_type);
+  }
+
+	SPDK_PTL_INFO("%s: dptr.sgl1: addr=0x%016" PRIx64 " type=%u subtype=%u",
+		       prefix,
+		       cmd->dptr.sgl1.address,
+		       sgl_type, sgl_subtype);
+
+	// Print length based on SGL type
+		SPDK_PTL_INFO("%s: dptr.sgl1.keyed: length=%u key: %u",
+			       prefix,
+			       cmd->dptr.sgl1.keyed.length, cmd->dptr.sgl1.keyed.key);
+
+	return 1;
 }
 
 // Function to print NVMe completion in human-readable format
-int ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix)
+int ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix, int cq_id)
 {
 	if (!cpl) {
-		SPDK_PTL_DEBUG("NVMe-cpl: NULL completion");
+		SPDK_PTL_INFO("NVMe-cpl: NULL completion");
 		return 1;
 	}
 
-	SPDK_PTL_DEBUG("NVMe-cpl: Completion Status: 0x%04x", cpl->status_raw);
+	SPDK_PTL_INFO("%s: Completion Status: 0x%04x from cq_id: %d", prefix, cpl->status_raw, cq_id);
 
 	// Interpret status code
 	if (cpl->status.sct == SPDK_NVME_SCT_GENERIC) {
-		SPDK_PTL_DEBUG("%s:  Status Code Type: Generic (0x%x)", prefix, cpl->status.sct);
+		SPDK_PTL_INFO("%s:  Status Code Type: Generic (0x%x)", prefix, cpl->status.sct);
 		switch (cpl->status.sc) {
 		case SPDK_NVME_SC_SUCCESS:
-			SPDK_PTL_DEBUG("%s:  Status Code: Success (0x%x)", prefix, cpl->status.sc);
+			SPDK_PTL_INFO("%s:  Status Code: Success (0x%x)", prefix, cpl->status.sc);
 			break;
 		case SPDK_NVME_SC_INVALID_OPCODE:
-			SPDK_PTL_DEBUG("%s:  Status Code: Invalid Opcode (0x%x)", prefix, cpl->status.sc);
+			SPDK_PTL_INFO("%s:  Status Code: Invalid Opcode (0x%x)", prefix, cpl->status.sc);
 			break;
 		case SPDK_NVME_SC_INVALID_FIELD:
-			SPDK_PTL_DEBUG("%s:  Status Code: Invalid Field (0x%x)", prefix, cpl->status.sc);
+			SPDK_PTL_INFO("%s:  Status Code: Invalid Field (0x%x)", prefix, cpl->status.sc);
 			break;
-    case SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT:
-			SPDK_PTL_DEBUG("%s:  Status Code: Invalid Namespace or FORMAT (0x%x)", prefix, cpl->status.sc);
-      break;
+		case SPDK_NVME_SC_INVALID_NAMESPACE_OR_FORMAT:
+			SPDK_PTL_INFO("%s:  Status Code: Invalid Namespace or FORMAT (0x%x)", prefix, cpl->status.sc);
+			break;
 
 		default:
-			SPDK_PTL_DEBUG("%s:  Status Code: Unknown (0x%x)", prefix, cpl->status.sc);
+			SPDK_PTL_INFO("%s:  Status Code: Unknown (0x%x)", prefix, cpl->status.sc);
 			break;
 		}
 	} else {
-		SPDK_PTL_DEBUG("%s:  Status Code Type: 0x%x", prefix, cpl->status.sct);
+		SPDK_PTL_INFO("%s:  Status Code Type: 0x%x", prefix, cpl->status.sct);
 		printf("  Status Code: 0x%x\n", cpl->status.sc);
 	}
 
-	SPDK_PTL_DEBUG("%s:  Phase: %u", prefix, cpl->status.p);
-	SPDK_PTL_DEBUG("%s:  CID: %u", prefix, cpl->cid);
-	SPDK_PTL_DEBUG("%s:  SQID: %u", prefix, cpl->sqid);
-	SPDK_PTL_DEBUG("%s:  SQHD: %u", prefix, cpl->sqhd);
-	SPDK_PTL_DEBUG("%s:  Result Data: 0x%08x", prefix, cpl->cdw0);
-  return 1;
+	SPDK_PTL_INFO("%s:  Phase: %u", prefix, cpl->status.p);
+	SPDK_PTL_INFO("%s:  CID: %u", prefix, cpl->cid);
+	SPDK_PTL_INFO("%s:  SQID: %u", prefix, cpl->sqid);
+	SPDK_PTL_INFO("%s:  SQHD: %u", prefix, cpl->sqhd);
+	SPDK_PTL_INFO("%s:  Result Data: 0x%08x", prefix, cpl->cdw0);
+	return 1;
 }
 

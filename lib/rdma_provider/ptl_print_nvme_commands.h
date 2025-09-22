@@ -3,9 +3,9 @@
 struct spdk_nvme_cmd;
 struct spdk_nvme_cpl;
 // Function to print NVMe command in human-readable format
-int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix);
+int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix, int cq_id);
 
 
 // Function to print NVMe completion in human-readable format
-int ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix);
+int ptl_print_nvme_cpl(const struct spdk_nvme_cpl *cpl, const char *prefix, int cq_id);
 #endif
