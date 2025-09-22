@@ -72,7 +72,6 @@ void dlist_destroy(struct dlist *list)
 		if (list->destructor) {
 			list->destructor(current->data);
 		}
-		fprintf(stderr, "Freeing\n");
 		free(current);
 		current = next;
 	}
