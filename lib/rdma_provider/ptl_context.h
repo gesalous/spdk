@@ -13,16 +13,16 @@ struct ibv_pd;
 
 struct ptl_context_recv_op {
 	uint64_t bytes_received;
-  int initiator_qp_num;
+	int initiator_qp_num;
 	int target_qp_num;
 	bool reveive_done;
 	/*In which cqid I wait for the receive event*/
 	int cq_id;
-  ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
+	ptl_iovec_t io_vector[PTL_IOVEC_SIZE];
 };
 
 struct ptl_context_send_op {
-  int qp_num;
+	int qp_num;
 	/*only for DEBUG purposes*/
 	uint64_t crc_checksum;
 	void *addr;

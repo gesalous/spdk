@@ -120,7 +120,7 @@ io_complete(void *arg, const struct spdk_nvme_cpl *completion)
 			RTEST_PTL_FATAL("Checksum mismatch! expected=%016lx got=%016lx",
 					g_expected_checksum, crc);
 		}
-    // RTEST_PTL_INFO("Checksum test passed!");
+		// RTEST_PTL_INFO("Checksum test passed!");
 	}
 }
 
@@ -304,7 +304,7 @@ static void run_io_loop(bool check_data)
 			RTEST_PTL_FATAL("Failed to allocate DMA buffer for request %d", i);
 			return;
 		}
-    RTEST_PTL_INFO("Buffer no %d to land the dmas from the target: %lu",i,(uint64_t)requests[i].buf);
+		RTEST_PTL_INFO("Buffer no %d to land the dmas from the target: %lu", i, (uint64_t)requests[i].buf);
 		requests[i].ns_entry = ns_entry;
 		requests[i].complete = true;
 	}

@@ -14,9 +14,9 @@ static int ptl_local_qp_num = 1;
 struct ptl_cm_id *ptl_cm_id_create(struct rdma_cm_ptl_event_channel *ptl_channel, void *context)
 {
 	struct ptl_context * ptl_context;
-  if(NULL == ptl_channel){
-    SPDK_PTL_FATAL("NULL channel on cm_id_create?");
-  }
+	if (NULL == ptl_channel) {
+		SPDK_PTL_FATAL("NULL channel on cm_id_create?");
+	}
 	struct ptl_cm_id * ptl_id = calloc(1UL, sizeof(*ptl_id));
 	if (NULL == ptl_id) {
 		SPDK_PTL_FATAL("Failed to allocate memory");
@@ -78,15 +78,15 @@ struct rdma_cm_event *ptl_cm_id_create_event(struct ptl_cm_id *ptl_id, struct pt
 void ptl_cm_id_add_event(struct ptl_cm_id *ptl_id,
 			 struct rdma_cm_event *event)
 {
-  if(NULL == ptl_id->ptl_channel){
-    SPDK_PTL_FATAL("NULL channel in ptl_cm_id? why?");
-  }
+	if (NULL == ptl_id->ptl_channel) {
+		SPDK_PTL_FATAL("NULL channel in ptl_cm_id? why?");
+	}
 	rdma_cm_ptl_event_channel_lock_event_deque(ptl_id->ptl_channel);
 	if (false ==
 	    deque_push_front(ptl_id->ptl_channel->events_deque, event)) {
 		SPDK_PTL_FATAL("Failed to queue fake event");
 	}
-  //gesalous XXX TODO XXX we do not need this for now.
+	//gesalous XXX TODO XXX we do not need this for now.
 	// uint64_t result = 0;
 	// if (write(ptl_id->ptl_channel->fake_channel.fd, &result, sizeof(result)) != sizeof(result)) {
 	// 	perror("write failed reason:");

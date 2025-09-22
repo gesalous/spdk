@@ -71,10 +71,11 @@ static bool
 probe_cb(void *cb_ctx, const struct spdk_nvme_transport_id *trid,
 	 struct spdk_nvme_ctrlr_opts *opts)
 {
-  SPDK_PTL_INFO("Probing controller: %s max I/O queues supported are: %d timeout (default) is %u\n", trid->traddr,
+	SPDK_PTL_INFO("Probing controller: %s max I/O queues supported are: %d timeout (default) is %u\n",
+		      trid->traddr,
 		      opts->num_io_queues, opts->keep_alive_timeout_ms);
-  opts->keep_alive_timeout_ms = 90000;
-  return true;
+	opts->keep_alive_timeout_ms = 90000;
+	return true;
 }
 
 static void
@@ -230,11 +231,11 @@ static void *io_worker(void *args)
 		// Wait for at least one completion
 		while (io_thread->ios_submitted - io_thread->ios_completed >= io_thread->queue_size) {
 			SPDK_PTL_DEBUG("Queue overflow size: %d submitted: %d completed: %d",
-				      io_thread->ios_submitted - io_thread->ios_completed, io_thread->ios_submitted,
-				      io_thread->ios_completed);
+				       io_thread->ios_submitted - io_thread->ios_completed, io_thread->ios_submitted,
+				       io_thread->ios_completed);
 			spdk_nvme_qpair_process_completions(
 				io_thread->g_test_ctx->volumes[io_thread->volume_id].qpair[io_thread->io_queue_id], 0);
-      spdk_nvme_ctrlr_process_admin_completions(vol_ctx->ctrlr);
+			spdk_nvme_ctrlr_process_admin_completions(vol_ctx->ctrlr);
 		}
 	}
 

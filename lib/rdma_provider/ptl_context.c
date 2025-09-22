@@ -338,9 +338,9 @@ static struct ptl_context_op_meta *ptl_cnxt_process_auto_unlink(ptl_event_t even
 	wc->src_qp = INT32_MAX;
 
 	SPDK_PTL_DEBUG("Got ack for recv for wr_id: %lu mismatch of queues? %s send ack "
-		      "is for queue: %d current ptl_cq is: %d",
-		      recv_meta->wr_id, ptl_cq->cq_id != recv_meta->cq_id ? "YES" : "NO",
-		      recv_meta->cq_id, ptl_cq->cq_id);
+		       "is for queue: %d current ptl_cq is: %d",
+		       recv_meta->wr_id, ptl_cq->cq_id != recv_meta->cq_id ? "YES" : "NO",
+		       recv_meta->cq_id, ptl_cq->cq_id);
 	return recv_meta;
 }
 
@@ -444,10 +444,10 @@ static int ptl_print_event(struct ptl_context_op_meta *op_meta, bool is_late)
 			op_meta->send_op.length == 64
 			? ptl_print_nvme_cmd(
 				op_meta->send_op.addr,
-				is_late ? prefix_cmd_send_late : prefix_cmd_send,op_meta->cq_id)
+				is_late ? prefix_cmd_send_late : prefix_cmd_send, op_meta->cq_id)
 			: ptl_print_nvme_cpl(
 				op_meta->send_op.addr,
-				is_late ? prefix_cpl_send_late : prefix_cpl_send,op_meta->cq_id));
+				is_late ? prefix_cpl_send_late : prefix_cpl_send, op_meta->cq_id));
 	} else if (op_meta->obj_type == PTL_RECV_OP) {
 		SPDK_PTL_INFO(
 			"RECV Event Print: %d",
@@ -497,10 +497,10 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 			       late_wc->wr_id);
 		wc[events_processed++] = ptl_late_wc->wc;
 		SPDK_PTL_DEBUG("Late event: %d", ptl_print_event(ptl_late_wc->op_meta, true));
-    free(ptl_late_wc->op_meta);
-    ptl_late_wc->op_meta = NULL;
+		free(ptl_late_wc->op_meta);
+		ptl_late_wc->op_meta = NULL;
 		free(ptl_late_wc);
-    ptl_late_wc = NULL;
+		ptl_late_wc = NULL;
 	}
 
 	while (events_processed < num_entries) {
@@ -520,8 +520,8 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 			}
 
 			SPDK_PTL_DEBUG("PtlCQ Delivered on-time event: %d", ptl_print_event(op_meta, false));
-      free(op_meta);
-      op_meta = NULL;
+			free(op_meta);
+			op_meta = NULL;
 			++events_processed;
 
 		} else if (ret == PTL_EQ_EMPTY) {

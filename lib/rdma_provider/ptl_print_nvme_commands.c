@@ -70,37 +70,38 @@ int ptl_print_nvme_cmd(const struct spdk_nvme_cmd *cmd, const char *prefix, int 
 		break;
 	}
 
-	SPDK_PTL_INFO("%s: command opcode: 0x%02x  human-readable: %s from cq_id: %d", prefix, cmd->opc, command, cq_id);
+	SPDK_PTL_INFO("%s: command opcode: 0x%02x  human-readable: %s from cq_id: %d", prefix, cmd->opc,
+		      command, cq_id);
 	SPDK_PTL_INFO("%s: NSID: %u", prefix, cmd->nsid);
 	SPDK_PTL_INFO("%s: CID: %u", prefix, cmd->cid);
 	SPDK_PTL_INFO("%s:  FUSE: %u", prefix, cmd->fuse);
 	SPDK_PTL_INFO("%s:  PSDT: %u\n", prefix, cmd->psdt);
 	SPDK_PTL_INFO("%s:  CDW10-15: 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x 0x%08x", prefix,
-		       cmd->cdw10, cmd->cdw11, cmd->cdw12, cmd->cdw13, cmd->cdw14, cmd->cdw15);
+		      cmd->cdw10, cmd->cdw11, cmd->cdw12, cmd->cdw13, cmd->cdw14, cmd->cdw15);
 	// If READ or WRITE, show data pointer (PRP / SGL)
 	if (cmd->opc != SPDK_NVME_OPC_READ && cmd->opc != SPDK_NVME_OPC_WRITE) {
 		return 1;
 	}
-  if(0 == cmd->psdt){
-    SPDK_PTL_FATAL("%s *WEIRD* PRPs used instead of SGLs",prefix);
-  }
+	if (0 == cmd->psdt) {
+		SPDK_PTL_FATAL("%s *WEIRD* PRPs used instead of SGLs", prefix);
+	}
 
 	// Print SGL descriptor - check type/subtype first to determine which union member to use
 	uint8_t sgl_type = cmd->dptr.sgl1.generic.type;
 	uint8_t sgl_subtype = cmd->dptr.sgl1.generic.subtype;
-  if(sgl_type != SPDK_NVME_SGL_TYPE_KEYED_DATA_BLOCK){
-    SPDK_PTL_FATAL("%s *WEIRD* sgl is not of keyed type  sgl_type: %u",prefix, sgl_type);
-  }
+	if (sgl_type != SPDK_NVME_SGL_TYPE_KEYED_DATA_BLOCK) {
+		SPDK_PTL_FATAL("%s *WEIRD* sgl is not of keyed type  sgl_type: %u", prefix, sgl_type);
+	}
 
 	SPDK_PTL_INFO("%s: dptr.sgl1: addr=0x%016" PRIx64 " type=%u subtype=%u",
-		       prefix,
-		       cmd->dptr.sgl1.address,
-		       sgl_type, sgl_subtype);
+		      prefix,
+		      cmd->dptr.sgl1.address,
+		      sgl_type, sgl_subtype);
 
 	// Print length based on SGL type
-		SPDK_PTL_INFO("%s: dptr.sgl1.keyed: length=%u key: %u",
-			       prefix,
-			       cmd->dptr.sgl1.keyed.length, cmd->dptr.sgl1.keyed.key);
+	SPDK_PTL_INFO("%s: dptr.sgl1.keyed: length=%u key: %u",
+		      prefix,
+		      cmd->dptr.sgl1.keyed.length, cmd->dptr.sgl1.keyed.key);
 
 	return 1;
 }
