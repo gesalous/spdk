@@ -225,7 +225,7 @@ static struct ptl_context_op_meta *ptl_cnxt_process_reply(ptl_event_t event, str
 	}
 	wc->src_qp = 0;/*XXX TODO XXX*/
 	SPDK_PTL_DEBUG("NVMe: RDMA read done (PTL_EVENT_REPLY). Number of bytes received: %lu. Filling wc with code %d qp_num: %d",
-		       event.rlength, event.ni_fail_type, rdma_read_op->qp_num);
+		       event.rlength, event.ni_fail_type, rdma_read_meta->send_op.qp_num);
 
 
 	return rdma_read_meta;
@@ -252,7 +252,7 @@ static struct ptl_context_op_meta *ptl_cnxt_process_ack(ptl_event_t event, struc
 		SPDK_PTL_FATAL("Corrupted object type this is not a PTL_LE_SEND_OP");
 	}
 	SPDK_PTL_DEBUG("NVMe: Got a PTL_EVENT_ACK event filling wc with code %d event type: %d from local qp num: %d",
-		       event.ni_fail_type, event.type, send_op->qp_num);
+		       event.ni_fail_type, event.type, send_meta->send_op.qp_num);
 
 	// memset(wc, 0x00, sizeof(*wc));
 
@@ -323,9 +323,9 @@ static struct ptl_context_op_meta *ptl_cnxt_process_auto_unlink(ptl_event_t even
 	SPDK_PTL_DEBUG("NVMe-cmd-recv: RECV (PtlPut+AUTO_UNLINK) operation is "
 		       "between the pair initiator_qp_num = %d target_qp_num = "
 		       "%d is target? %s size: %lu B wc->qp_num = %d recv_buffer = %lu",
-		       recv_op->initiator_qp_num,
-		       recv_op->target_qp_num, is_target ? "YES" : "NO",
-		       recv_op->bytes_received, wc->qp_num, (uint64_t)recv_op->io_vector[0].iov_base);
+		       recv_meta->recv_op.initiator_qp_num,
+		       recv_meta->recv_op.target_qp_num, is_target ? "YES" : "NO",
+		       recv_meta->recv_op.bytes_received, wc->qp_num, (uint64_t)recv_meta->recv_op.io_vector[0].iov_base);
 
 	if (wc->qp_num == 0) {
 		SPDK_PTL_FATAL(
@@ -494,7 +494,7 @@ static int ptl_cnxt_poll_cq(struct ibv_cq *ibv_cq, int num_entries,
 			break;
 		}
 		SPDK_PTL_DEBUG("PtlCQ: Delivered late event for ptl_cq id: %d wr_id = %lu", ptl_cq->cq_id,
-			       late_wc->wr_id);
+			       ptl_late_wc->wc.wr_id);
 		wc[events_processed++] = ptl_late_wc->wc;
 		SPDK_PTL_DEBUG("Late event: %d", ptl_print_event(ptl_late_wc->op_meta, true));
 		free(ptl_late_wc->op_meta);

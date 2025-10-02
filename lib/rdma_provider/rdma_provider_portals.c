@@ -341,7 +341,7 @@ spdk_rdma_provider_qp_flush_recv_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 			recv_meta->recv_op.io_vector[i].iov_base = (ptl_addr_t) wr->sg_list[i].addr;
 			recv_meta->recv_op.io_vector[i].iov_len = wr->sg_list[i].length;
 			SPDK_PTL_DEBUG("SGE no: %d out of: %d: Address = %p, Length = %lu\n",
-				       i, wr->num_sge, recv_op->io_vector[i].iov_base, recv_op->io_vector[i].iov_len);
+				       i, wr->num_sge, recv_meta->recv_op.io_vector[i].iov_base, recv_meta->recv_op.io_vector[i].iov_len);
 		}
 		// Setup the list entry
 		// Initialize the matching entry
@@ -391,7 +391,7 @@ struct spdk_rdma_provider_qp *
 spdk_rdma_provider_qp_create(struct rdma_cm_id *cm_id,
 			     struct spdk_rdma_provider_qp_init_attr *qp_attr)
 {
-	SPDK_PTL_DEBUG("DOING BASICALLY THE SAME STAFF as the original");
+	SPDK_PTL_DEBUG("Creating an SPDK RDMA PROVIDER QP");
 	struct spdk_portals_provider_qp *spdk_portals_qp;
 	struct spdk_rdma_provider_qp *spdk_rdma_qp;
 	int rc;
@@ -625,7 +625,7 @@ static void spdk_rdma_provider_ptl_rdma_read(struct ptl_pd *ptl_pd, struct ptl_q
 	local_offset = wr->sg_list[0].addr - (uint64_t)ptl_pd_mem_desc->local_w_mem_desc.start;
 	SPDK_PTL_DEBUG("NVMe: Performing an RDMA read from node nid: %d pid: %d portal index: %d local offset: %lu match_bits: %lu is it signaled?: %s qp_num: %d",
 		       destination.phys.nid, destination.phys.pid, PTL_PT_INDEX, local_offset, match_bits,
-		       rdma_read_op ? "YES" : "NO", ptl_qp->ptl_cm_id->ptl_qp_num);
+		       rdma_read_meta ? "YES" : "NO", ptl_qp->ptl_cm_id->ptl_qp_num);
 	/*XXX TODO XXX, set match bits correct here!XXX TODO XXX*/
 	rc = PtlGet(ptl_pd_mem_desc->local_w_mem_handle, local_offset, wr->sg_list[0].length, destination,
 		    PTL_PT_INDEX, match_bits, wr->wr.rdma.remote_addr, rdma_read_meta);
@@ -653,12 +653,6 @@ static void spdk_rdma_provider_ptl_rdma_write(struct ptl_pd *ptl_pd, struct ptl_
 			SPDK_PTL_FATAL("Failed to find descriptor");
 		}
 		local_offset = wr->sg_list[i].addr - (uint64_t)ptl_pd_mem_desc->local_w_mem_desc.start;
-		SPDK_PTL_DEBUG("Performing an RDMA WRITE (sg[%d]) to node "
-			       "nid: %d pid: %d portal index: %d local offset: "
-			       "%lu length in B: %u remote_addr: %lu is it signaled?: %s",
-			       i, destination.phys.nid, destination.phys.pid,
-			       PTL_PT_INDEX, local_offset,
-			       wr->sg_list[i].length, remote_addr, send_op ? "YES" : "NO");
 
 		rdma_write_meta = NULL;
 		if (wr->send_flags & IBV_SEND_SIGNALED && i == (wr->num_sge - 1)) {
@@ -668,6 +662,13 @@ static void spdk_rdma_provider_ptl_rdma_write(struct ptl_pd *ptl_pd, struct ptl_
 			rdma_write_meta->send_op.qp_num = ptl_qp->ptl_cm_id->ptl_qp_num;
 			rdma_write_meta->cq_id = ptl_qp->send_cq->cq_id;
 		}
+		SPDK_PTL_DEBUG("Performing an RDMA WRITE (sg[%d]) to node "
+			       "nid: %d pid: %d portal index: %d local offset: "
+			       "%lu length in B: %u remote_addr: %lu is it signaled?: %s",
+			       i, destination.phys.nid, destination.phys.pid,
+			       PTL_PT_INDEX, local_offset,
+			       wr->sg_list[i].length, remote_addr, rdma_write_meta ? "YES" : "NO");
+
 
 		rc = PtlPut(ptl_pd_mem_desc->local_w_mem_handle,
 			    local_offset,// local offset
@@ -738,8 +739,10 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 
 
 			SPDK_PTL_DEBUG("OK: \n%d", wr->sg_list[0].length == 64 ?
-				       ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)wr->sg_list[i].addr, "NVMe-cmd-send-og") :
-				       ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)wr->sg_list[i].addr, "NVMe-cpl-send-og"));
+				       ptl_print_nvme_cmd((const struct spdk_nvme_cmd *)wr->sg_list[i].addr, "NVMe-cmd-send-og",
+							  ptl_qp->send_cq->cq_id) :
+				       ptl_print_nvme_cpl((const struct spdk_nvme_cpl *)wr->sg_list[i].addr, "NVMe-cpl-send-og",
+							  ptl_qp->send_cq->cq_id));
 
 
 			local_offset = wr->sg_list[i].addr - (uint64_t)ptl_mem_desc->local_w_mem_desc.start;
@@ -770,7 +773,7 @@ spdk_rdma_provider_qp_flush_send_wrs(struct spdk_rdma_provider_qp *spdk_rdma_qp,
 				ptl_qp->remote_pt_index,
 				ptl_uuid_get_initiator_qp_num(match_bits),
 				ptl_uuid_get_target_qp_num(match_bits),
-				local_offset, send_op ? "YES" : "NO");
+				local_offset, send_meta ? "YES" : "NO");
 
 			rc = PtlPut(ptl_mem_desc->local_w_mem_handle,
 				    local_offset,//local offset
