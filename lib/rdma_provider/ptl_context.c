@@ -595,7 +595,7 @@ struct ptl_context *ptl_cnxt_get(void)
 	if (ret != PTL_OK) {
 		SPDK_PTL_FATAL("PtlGetPhysId failed: %d", ret);
 	}
-	SPDK_PTL_INFO("Server Physical NID: %d, PID: %d\n", actual_phys_id.phys.nid,
+	SPDK_PTL_INFO("Server Physical NID: %u, PID: %u\n", actual_phys_id.phys.nid,
 		      actual_phys_id.phys.pid);
 
 	// Check if PTL_TOTAL_DATA_ORDERING is supported
